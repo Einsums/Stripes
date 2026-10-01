@@ -422,8 +422,8 @@ InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::stri
 
     auto const requested = parse_instruction_set(*override_name);
     if (!requested.has_value()) {
-        emit(MessageLevel::Warning, "STRIPES_ARCH=\"" + std::string(*override_name) +
-                                        "\" is not a recognized instruction-set name; ignoring the override. "
+        emit(MessageLevel::Warning, "the requested dispatch rung \"" + std::string(*override_name) +
+                                        "\" is not a recognized instruction-set name; ignoring the request. "
                                         "Accepted: baseline, v2, v3, v4, sme (aliases: sse2, sse4.2, avx2, avx512, sme2).");
         return ceiling;
     }
@@ -439,15 +439,15 @@ InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::stri
     for (InstructionSet const set : order) {
         found = found || set == *requested;
         if (found && supports(features, set)) {
-            emit(MessageLevel::Warning, std::string("STRIPES_ARCH requests ") + to_string(*requested) +
-                                            " but this CPU/OS cannot run it; using " + to_string(set) + ".");
+            emit(MessageLevel::Warning, std::string("the requested dispatch rung ") + to_string(*requested) +
+                                            " cannot run on this CPU/OS; using " + to_string(set) + ".");
             return set;
         }
     }
 
-    emit(MessageLevel::Warning, std::string("STRIPES_ARCH requests ") + to_string(*requested) +
-                                    ", which is not a rung of this CPU's architecture; ignoring the override and using " +
-                                    to_string(ceiling) + ".");
+    emit(MessageLevel::Warning, std::string("the requested dispatch rung ") + to_string(*requested) +
+                                    " is not a rung of this CPU's architecture; ignoring the request and using " + to_string(ceiling) +
+                                    ".");
     return ceiling;
 }
 

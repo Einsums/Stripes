@@ -128,6 +128,15 @@ install(
   NAMESPACE Stripes::
   DESTINATION ${_stripes_cmake_dir}
 )
+# The build tree is a usable package too, for a project that fetches Stripes and exports its own
+# build tree: the targets, and beside them the files the config includes.
+export(
+  EXPORT StripesTargets
+  NAMESPACE Stripes::
+  FILE ${CMAKE_CURRENT_BINARY_DIR}/StripesTargets.cmake
+)
+configure_file(cmake/StripesDispatch.cmake ${CMAKE_CURRENT_BINARY_DIR}/StripesDispatch.cmake COPYONLY)
+configure_file(cmake/StripesCheckRungObjects.cmake ${CMAKE_CURRENT_BINARY_DIR}/StripesCheckRungObjects.cmake COPYONLY)
 configure_package_config_file(
   cmake/StripesConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/StripesConfig.cmake INSTALL_DESTINATION ${_stripes_cmake_dir}
 )
