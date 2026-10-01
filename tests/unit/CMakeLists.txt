@@ -61,6 +61,9 @@ foreach(test ${StripesTests})
     target_compile_options(${test}_test PRIVATE -ffp-contract=off)
   endif()
   add_test(NAME unit.${test} COMMAND ${test}_test)
+  # Catch2 exits 4 when every case it ran was skipped (ComplexVec in the scalar fallback build, which
+  # has no CVec), so ctest reports Skipped rather than a failure.
+  set_tests_properties(unit.${test} PROPERTIES SKIP_RETURN_CODE 4)
 endforeach()
 
 # The ladder tests pin the sme gate against what the rung's flags enable on

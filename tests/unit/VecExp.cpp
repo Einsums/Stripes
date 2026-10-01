@@ -11,8 +11,10 @@
 // vector lanes bit for bit is checked in GenericKernel.
 
 #include <Stripes/Math.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <type_traits>
 
@@ -21,6 +23,18 @@
 namespace simd = stripes;
 
 namespace {
+
+/// Points per sweep, divided by STRIPES_TEST_SWEEP_DIVISOR where it is set: CI sets it under QEMU,
+/// where the full sweeps (and, on aarch64 Linux, long double's software arithmetic) take minutes.
+/// The native jobs run them in full.
+long sweep(long n) {
+    static long const divisor = [] {
+        char const *s = std::getenv("STRIPES_TEST_SWEEP_DIVISOR");
+        long const  d = s != nullptr ? std::atol(s) : 1;
+        return d > 1 ? d : 1L;
+    }();
+    return std::max(n / divisor, 64L);
+}
 
 /// |got - ref| in units of the last place of ref rounded to T, with the subnormal spacing below the
 /// normal range.
@@ -53,6 +67,7 @@ double worst_error(simd::scalar_t<V> lo, simd::scalar_t<V> hi, long n) {
     constexpr int L     = simd::lanes_v<V>;
     double        worst = 0;
     T             x[L], y[L];
+    n = sweep(n);
     for (long i = 0; i < n; i += L) {
         for (int j = 0; j < L; ++j) {
             x[j] = lo + (hi - lo) * static_cast<T>(static_cast<double>(i + j) / static_cast<double>(n));

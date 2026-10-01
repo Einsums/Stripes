@@ -210,10 +210,16 @@ jobs:
         run: |
           ./build/examples/example_PlatformInfo | tee platform.log
           ./build/stripes_rung_guard sme /bin/true || { echo "::error::the emulated CPU cannot run the sme rung"; exit 1; }
+      # Only what needs the emulated core: the sme copies, rung selection and the examples. The NEON
+      # baseline copies run natively in linux-arm64, and under emulation the accuracy sweeps (with
+      # long double in software on aarch64 Linux) took minutes, so they run a sixteenth of their points.
       - name: Test
+        env:
+          STRIPES_TEST_SWEEP_DIVISOR: "16"
         run: |
           set -o pipefail
-          ctest --test-dir build -j4 --timeout 3600 | tee qemu-ctest.log
+          ctest --test-dir build -j4 --timeout 3600 -R '[.]sme$|RuntimeFeatures|ArchOverride|^example[.]' --no-tests=error \
+            | tee qemu-ctest.log
           # Only the x86 rungs exist nowhere here; an sme test that did not run means the gate or the
           # guard turned the emulated SME away.
           if grep -E "\.sme .*Skipped" qemu-ctest.log; then

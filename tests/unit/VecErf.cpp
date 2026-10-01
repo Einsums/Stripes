@@ -18,6 +18,7 @@
 #include <Stripes/Math.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <ostream>
@@ -28,6 +29,18 @@
 namespace simd = stripes;
 
 namespace {
+
+/// Points per sweep, divided by STRIPES_TEST_SWEEP_DIVISOR where it is set: CI sets it under QEMU,
+/// where the full sweeps (and, on aarch64 Linux, long double's software arithmetic) take minutes.
+/// The native jobs run them in full.
+long sweep(long n) {
+    static long const divisor = [] {
+        char const *s = std::getenv("STRIPES_TEST_SWEEP_DIVISOR");
+        long const  d = s != nullptr ? std::atol(s) : 1;
+        return d > 1 ? d : 1L;
+    }();
+    return std::max(n / divisor, 64L);
+}
 
 template <typename T>
 double ulp_error(T got, long double ref) {
@@ -231,6 +244,7 @@ void check_range(simd::scalar_t<V> lo, simd::scalar_t<V> hi, long n, F f, Ref re
     constexpr int L = simd::lanes_v<V>;
     T             x[L], y[L];
     double        worst = 0;
+    n                   = sweep(n);
     for (long i = 0; i < n; i += L) {
         for (int j = 0; j < L; ++j) {
             double const t = static_cast<double>(i + j) / static_cast<double>(n);
@@ -337,13 +351,15 @@ TEST_CASE("the double-double reference agrees with erfl and erfcl", "[simd][math
             }
             return static_cast<double>(std::fabs(value - want) / static_cast<long double>(ulp));
         };
-        double worst_erf = 0, worst_erfc = 0;
-        for (long i = 0; i <= 120000; ++i) {
-            double const x = -6.0 + 12.0 * static_cast<double>(i) / 120000.0;
+        double     worst_erf = 0, worst_erfc = 0;
+        long const n_erf = sweep(120000);
+        for (long i = 0; i <= n_erf; ++i) {
+            double const x = -6.0 + 12.0 * static_cast<double>(i) / static_cast<double>(n_erf);
             worst_erf      = std::max(worst_erf, gap(erfl(x), dd_erf(x)));
         }
-        for (long i = 0; i <= 200000; ++i) {
-            double const x = -6.0 + 33.25 * static_cast<double>(i) / 200000.0;
+        long const n_erfc = sweep(200000);
+        for (long i = 0; i <= n_erfc; ++i) {
+            double const x = -6.0 + 33.25 * static_cast<double>(i) / static_cast<double>(n_erfc);
             worst_erfc     = std::max(worst_erfc, gap(erfcl(x), dd_erfc(x)));
         }
         INFO("worst erf " << worst_erf << " ulp, worst erfc " << worst_erfc << " ulp of double");
