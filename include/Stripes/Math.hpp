@@ -5,10 +5,8 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Generic.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Generic.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -40,8 +38,8 @@
 // without AVX2 does not have.
 // ===========================================================================
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 namespace detail {
 template <typename T>
@@ -81,7 +79,7 @@ struct exp_constants<float> {
 /// 2^k for integral k, from exponent bits: k + bias lands in the low mantissa bits of magic + k, and
 /// the shift moves it into the exponent field and the rest of magic out of the word.
 template <typename V>
-EINSUMS_FORCEINLINE V power_of_two(V k) {
+STRIPES_FORCEINLINE V power_of_two(V k) {
     using S           = scalar_t<V>;
     using C           = exp_constants<S>;
     auto const biased = bitcast<typename C::bits_type>(k + splat<V>(C::magic));
@@ -95,7 +93,7 @@ concept floating_value = std::same_as<scalar_t<V>, float> || std::same_as<scalar
 /// e^x, lane by lane; see the top of this header.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-EINSUMS_FORCEINLINE V exp(V x) {
+STRIPES_FORCEINLINE V exp(V x) {
     using S = scalar_t<V>;
     using C = detail::exp_constants<S>;
 
@@ -141,7 +139,7 @@ EINSUMS_FORCEINLINE V exp(V x) {
 
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-EINSUMS_FORCEINLINE V rsqrt(V x) {
+STRIPES_FORCEINLINE V rsqrt(V x) {
     return div(splat<V>(scalar_t<V>(1)), sqrt(x));
 }
 
@@ -167,7 +165,7 @@ EINSUMS_FORCEINLINE V rsqrt(V x) {
 //
 // The polynomials are Chebyshev fits generated in 60-digit arithmetic, of
 // degree 8, 19, 19 and 14 for double and 4, 10, 9 and 5 for float, by
-// libs/Einsums/SIMD/devtool/generate_erf_coefficients.py, whose output is the
+// devtools/generate_erf_coefficients.py, whose output is the
 // two erf_constants specializations below. The error against a correctly
 // rounded erf and erfc is measured in VecErf.
 // ===========================================================================
@@ -237,7 +235,7 @@ struct erf_constants<float> {
 
 /// Horner over coefficients stored highest power first.
 template <typename V, std::size_t K>
-EINSUMS_FORCEINLINE V horner(V z, scalar_t<V> const (&c)[K]) {
+STRIPES_FORCEINLINE V horner(V z, scalar_t<V> const (&c)[K]) {
     V p = splat<V>(c[0]);
     for (std::size_t k = 1; k < K; ++k) {
         p = fmadd(p, z, splat<V>(c[k]));
@@ -247,7 +245,7 @@ EINSUMS_FORCEINLINE V horner(V z, scalar_t<V> const (&c)[K]) {
 
 /// x^2 = hi + lo exactly: hi rounded, lo its error.
 template <typename V>
-EINSUMS_FORCEINLINE void exact_square(V x, V &hi, V &lo) {
+STRIPES_FORCEINLINE void exact_square(V x, V &hi, V &lo) {
     hi = x * x;
     if constexpr (scalar_fma_fused) {
         lo = fmsub(x, x, hi);
@@ -262,7 +260,7 @@ EINSUMS_FORCEINLINE void exact_square(V x, V &hi, V &lo) {
 
 /// erfc(a) for a >= 0.5, a no larger than the constants' top.
 template <typename V>
-EINSUMS_FORCEINLINE V erfc_tail(V a) {
+STRIPES_FORCEINLINE V erfc_tail(V a) {
     using S = scalar_t<V>;
     using C = erf_constants<S>;
     V hi, lo;
@@ -294,7 +292,7 @@ EINSUMS_FORCEINLINE V erfc_tail(V a) {
 /// erf(x), lane by lane; see above.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-EINSUMS_FORCEINLINE V erf(V x) {
+STRIPES_FORCEINLINE V erf(V x) {
     using S          = scalar_t<V>;
     using C          = detail::erf_constants<S>;
     V const    a     = abs(x);
@@ -315,7 +313,7 @@ EINSUMS_FORCEINLINE V erf(V x) {
 /// erfc(x) = 1 - erf(x), lane by lane, accurate where erfc is small; see above.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-EINSUMS_FORCEINLINE V erfc(V x) {
+STRIPES_FORCEINLINE V erfc(V x) {
     using S          = scalar_t<V>;
     using C          = detail::erf_constants<S>;
     V const    a     = abs(x);
@@ -332,5 +330,5 @@ EINSUMS_FORCEINLINE V erfc(V x) {
     return r;
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

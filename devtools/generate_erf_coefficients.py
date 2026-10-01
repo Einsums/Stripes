@@ -3,7 +3,7 @@
 # Copyright (c) The Einsums Developers. All rights reserved.
 # Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 # ----------------------------------------------------------------------------------------------
-"""Generate the polynomial coefficients of erf and erfc in Einsums/SIMD/Math.hpp.
+"""Generate the polynomial coefficients of erf and erfc in include/Stripes/Math.hpp.
 
 Prints the two ``erf_constants`` specializations (double and float) that Math.hpp holds,
 ready to replace the ones there. Requires mpmath (``pip install mpmath``); nothing else in

@@ -10,8 +10,7 @@
 // exactly, and the wide vector against the native one. That the scalar instantiation matches the
 // vector lanes bit for bit is checked in GenericKernel.
 
-#include <Einsums/SIMD/Math.hpp>
-
+#include <Stripes/Math.hpp>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -19,7 +18,7 @@
 
 #include <catch2/catch_all.hpp>
 
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace {
 

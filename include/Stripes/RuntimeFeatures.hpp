@@ -5,24 +5,19 @@
 
 #pragma once
 
-#include <Einsums/Config.hpp>
-
-#include <Einsums/Config/Namespace.hpp>
-
+#include <Stripes/Config.hpp>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string_view>
 
-EINSUMS_NAMESPACE_BEGIN(simd)
+STRIPES_NAMESPACE_BEGIN()
 
 /**
  * @brief The instruction-set family a CpuFeatures describes.
  *
  * Each family has its own dispatch ladder (see preference_order()), so a rung
  * of one family is never considered on a machine of another.
- *
- * @versionadded{2.0.0}
  */
 enum class Architecture : std::uint8_t {
     Other   = 0, ///< Neither x86 nor aarch64: only the Baseline rung exists.
@@ -48,8 +43,6 @@ enum class Architecture : std::uint8_t {
  *
  * On non-x86, non-aarch64 targets every field is false; such targets run the
  * baseline (scalar) code path.
- *
- * @versionadded{2.0.0}
  */
 struct CpuFeatures {
     /// The family of the machine; detect() sets it, and it picks the ladder the other fields are read against.
@@ -112,10 +105,8 @@ struct CpuFeatures {
  * cached for the lifetime of the process.
  *
  * @return A reference to the cached feature set.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT CpuFeatures const &cpu_features();
+STRIPES_EXPORT CpuFeatures const &cpu_features();
 
 /**
  * @brief The rungs of the runtime dispatch ladder.
@@ -144,8 +135,6 @@ EINSUMS_EXPORT CpuFeatures const &cpu_features();
  * is preference_order(), which is per architecture: aarch64 features do not
  * nest the way the x86 psABI levels do (Apple M4 has SME without SVE), so
  * no single ordinal can say which rung "implies" another.
- *
- * @versionadded{2.0.0}
  */
 enum class InstructionSet : std::uint8_t {
     Baseline = 0, ///< Toolchain default target: SSE2 on x86-64, NEON on aarch64.
@@ -161,10 +150,8 @@ enum class InstructionSet : std::uint8_t {
  * @param[in] set The rung to name.
  *
  * @return A static string; never nullptr.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT char const *to_string(InstructionSet set);
+STRIPES_EXPORT char const *to_string(InstructionSet set);
 
 /**
  * @brief Width in bits of the vector register a rung's kernels are written for.
@@ -181,13 +168,11 @@ EINSUMS_EXPORT char const *to_string(InstructionSet set);
  * @param[in] set The rung.
  *
  * @return 128, 256 or 512.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT int vector_bits(InstructionSet set);
+STRIPES_EXPORT int vector_bits(InstructionSet set);
 
 /**
- * @brief Parse a rung name, as accepted by the `--einsums:simd:arch`
+ * @brief Parse a rung name, as accepted by the `STRIPES_ARCH`
  *        option.
  *
  * Accepted spellings (case-insensitive): `baseline`, `v2`, `v3`, `v4`,
@@ -197,10 +182,8 @@ EINSUMS_EXPORT int vector_bits(InstructionSet set);
  * @param[in] name The spelling to parse.
  *
  * @return The rung, or std::nullopt if the spelling is not recognized.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT std::optional<InstructionSet> parse_instruction_set(std::string_view name);
+STRIPES_EXPORT std::optional<InstructionSet> parse_instruction_set(std::string_view name);
 
 /**
  * @brief The rungs of one architecture's ladder, most preferred first.
@@ -212,10 +195,8 @@ EINSUMS_EXPORT std::optional<InstructionSet> parse_instruction_set(std::string_v
  * @param[in] arch The architecture whose ladder to return.
  *
  * @return A view of a static array; valid for the lifetime of the process.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT std::span<InstructionSet const> preference_order(Architecture arch);
+STRIPES_EXPORT std::span<InstructionSet const> preference_order(Architecture arch);
 
 /**
  * @brief Whether a machine with @p features can execute code compiled for @p set.
@@ -232,10 +213,8 @@ EINSUMS_EXPORT std::span<InstructionSet const> preference_order(Architecture arc
  * @param[in] set The rung.
  *
  * @return True when every feature the rung's code may use is present.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT bool supports(CpuFeatures const &features, InstructionSet set);
+STRIPES_EXPORT bool supports(CpuFeatures const &features, InstructionSet set);
 
 /**
  * @brief The most preferred rung this CPU can execute.
@@ -247,19 +226,17 @@ EINSUMS_EXPORT bool supports(CpuFeatures const &features, InstructionSet set);
  * @param[in] features The feature set to classify.
  *
  * @return The best supported rung; Baseline when nothing else qualifies.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT InstructionSet highest_supported(CpuFeatures const &features);
+STRIPES_EXPORT InstructionSet highest_supported(CpuFeatures const &features);
 
 /**
  * @brief Resolve the rung to dispatch to, given a feature set and an
  *        optional override spelling.
  *
- * The override (normally the `--einsums:simd:arch` option) can
+ * The override (set_arch_override() or the `STRIPES_ARCH` environment variable) can
  * only choose a rung the machine supports. A supported rung is used as
  * given. A rung of this architecture that the machine cannot run is
- * replaced, with a logged warning, by the next supported rung after it in
+ * replaced, with a warning, by the next supported rung after it in
  * preference_order(), so asking for `v4` on an AVX2 machine gives `v3`. A
  * rung of another architecture, or an unparseable spelling, is ignored with
  * a logged warning. This is the pure, deterministic core of selected_arch(),
@@ -270,26 +247,50 @@ EINSUMS_EXPORT InstructionSet highest_supported(CpuFeatures const &features);
  * @param[in] override_name Optional rung spelling; pass std::nullopt for "no override".
  *
  * @return The rung to dispatch to.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::string_view> override_name);
+STRIPES_EXPORT InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::string_view> override_name);
 
 /**
  * @brief The rung the current process dispatches to.
  *
- * Equivalent to `resolve_arch(cpu_features(), <--einsums:simd:arch>)`,
- * computed once (thread-safe) and cached for the lifetime of the process.
- * Because the result is cached, the option must be parsed before the first
- * call anywhere in the process, on the command line or in the environment;
- * changing it afterwards has no effect. Test code that needs different rungs
- * should call resolve_arch() directly instead of setting the option.
+ * Equivalent to `resolve_arch(cpu_features(), override)`, computed once
+ * (thread-safe) and cached for the lifetime of the process. The override is
+ * the last set_arch_override() made before the first call, or failing that
+ * the `STRIPES_ARCH` environment variable. Changing either afterwards has no
+ * effect. Test code that needs different rungs should call resolve_arch()
+ * directly.
  *
  * @return The cached rung.
- *
- * @versionadded{2.0.0}
  */
-EINSUMS_EXPORT InstructionSet selected_arch();
+STRIPES_EXPORT InstructionSet selected_arch();
+
+/**
+ * @brief Cap the rung selected_arch() will choose, as `STRIPES_ARCH` does.
+ *
+ * For a program or library with its own configuration (a command-line flag,
+ * a settings file) to pass the user's choice on; it takes precedence over the
+ * environment variable. An empty name removes the override. It must be made
+ * before the first selected_arch() call in the process, since that call
+ * caches its answer.
+ *
+ * @return false when selected_arch() has already chosen, so the override came
+ *         too late to take effect.
+ */
+STRIPES_EXPORT bool set_arch_override(std::string_view name);
+
+/// How serious a message from the runtime library is.
+enum class MessageLevel { Debug, Warning };
+
+/// Receives the runtime library's messages: warnings about an override that
+/// cannot be honored, and the rung chosen, at debug level.
+using MessageHandler = void (*)(MessageLevel level, std::string_view message);
+
+/**
+ * @brief Route the runtime library's messages, for a program that has its own
+ *        logging. The default writes warnings to stderr and drops debug
+ *        messages; passing nullptr restores it.
+ */
+STRIPES_EXPORT void set_message_handler(MessageHandler handler) noexcept;
 
 namespace dispatch_detail {
 /// Position of @p set in the argument list select() takes.
@@ -311,6 +312,29 @@ constexpr int ladder_slot(InstructionSet set) noexcept {
 } // namespace dispatch_detail
 
 /**
+ * @brief What the code compiled for the sme rung needs besides SME itself.
+ *
+ * supports() says whether a core has the rung's own instructions (SME2 and
+ * FP64 FMOPA). Some compilers' SME flags also switch on non-streaming SVE or
+ * SVE2 (GCC before 15 makes +sme imply +sve2), and the autovectorizer may then
+ * put either anywhere in the rung's translation units, which faults on a core
+ * with SME but no SVE (Apple M4). Whether that happened depends on the
+ * compiler that built the calling code, not on the one that built Stripes, so
+ * the caller passes it: stripes_add_dispatch_sources() probes it and defines
+ * STRIPES_SME_RUNG_ENABLES_SVE and _SVE2 in its definitions, and
+ * STRIPES_LADDER() hands them to select(). The default assumes the worst.
+ */
+struct SmeRungRequires {
+    bool sve  = true;
+    bool sve2 = true;
+};
+
+/// Whether code built for the sme rung with these requirements runs on @p features.
+inline bool sme_rung_runs(CpuFeatures const &features, SmeRungRequires requires_) noexcept {
+    return supports(features, InstructionSet::Sme) && (!requires_.sve || features.sve) && (!requires_.sve2 || features.sve2);
+}
+
+/**
  * @brief select() against an explicit feature set and starting rung.
  *
  * Walks `preference_order(features.arch)` from @p start onward and returns
@@ -326,14 +350,13 @@ constexpr int ladder_slot(InstructionSet set) noexcept {
  * @param[in] v3 Entry point for the V3 rung, or nullptr if not built.
  * @param[in] v4 Entry point for the V4 rung, or nullptr if not built.
  * @param[in] sme Entry point for the Sme rung, or nullptr if not built.
+ * @param[in] sme_requires What the sme entry's code needs besides SME.
  *
  * @return The entry point to call; never nullptr.
- *
- * @versionadded{2.0.0}
  */
 template <typename F>
-F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr,
-             F sme = nullptr) {
+F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr, F sme = nullptr,
+             SmeRungRequires sme_requires = {}) {
     F const slots[] = {baseline, v2, v3, v4, sme};
     bool    reached = false;
     for (InstructionSet const rung : preference_order(features.arch)) {
@@ -341,8 +364,9 @@ F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2
         if (!reached) {
             continue;
         }
-        F const entry = slots[dispatch_detail::ladder_slot(rung)];
-        if (entry != nullptr && supports(features, rung)) {
+        F const    entry = slots[dispatch_detail::ladder_slot(rung)];
+        bool const runs  = rung == InstructionSet::Sme ? sme_rung_runs(features, sme_requires) : supports(features, rung);
+        if (entry != nullptr && runs) {
             return entry;
         }
     }
@@ -361,7 +385,7 @@ F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2
  *
  * @code
  * using KernelFn = void (*)(float const *, float *, std::size_t);
- * static KernelFn const kernel = einsums::simd::select<KernelFn>(
+ * static KernelFn const kernel = stripes::select<KernelFn>(
  *     &arch_baseline::kernel, &arch_v2::kernel, &arch_v3::kernel, &arch_v4::kernel);
  * @endcode
  *
@@ -370,14 +394,14 @@ F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2
  * @param[in] v3 Entry point for the V3 rung, or nullptr if not built.
  * @param[in] v4 Entry point for the V4 rung, or nullptr if not built.
  * @param[in] sme Entry point for the Sme rung, or nullptr if not built.
+ * @param[in] sme_requires What the sme entry's code needs besides SME; STRIPES_LADDER() passes the
+ *            probed answer, and the default assumes the worst.
  *
  * @return The entry point to call; never nullptr.
- *
- * @versionadded{2.0.0}
  */
 template <typename F>
-F select(F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr, F sme = nullptr) {
-    return select_for<F>(cpu_features(), selected_arch(), baseline, v2, v3, v4, sme);
+F select(F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr, F sme = nullptr, SmeRungRequires sme_requires = {}) {
+    return select_for<F>(cpu_features(), selected_arch(), baseline, v2, v3, v4, sme, sme_requires);
 }
 
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_NAMESPACE_END()

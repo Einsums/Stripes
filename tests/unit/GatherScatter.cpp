@@ -3,12 +3,10 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 //----------------------------------------------------------------------------------------------
 
-#include <Einsums/Debugging.hpp>
-#include <Einsums/SIMD/Convert.hpp>
-#include <Einsums/SIMD/Gather.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Convert.hpp>
+#include <Stripes/Gather.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Vec.hpp>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +18,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("gather with stride 1", "[simd]", float, double) {
     constexpr int         N = Vec<TestType>::lanes;

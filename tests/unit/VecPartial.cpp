@@ -7,10 +7,9 @@
 // on the heap, so an access past them is an out-of-bounds read or write that the sanitizer legs
 // report, rather than a quiet read of whatever sits next in a larger buffer.
 
-#include <Einsums/SIMD/Gather.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-
+#include <Stripes/Gather.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -26,7 +25,7 @@
 #    include <unistd.h>
 #endif
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("loadu_partial reads n lanes and zeroes the rest", "[simd][partial]", float, double, int32_t, uint32_t, int64_t,
                    uint64_t) {

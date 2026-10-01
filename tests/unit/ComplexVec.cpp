@@ -3,10 +3,8 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 //----------------------------------------------------------------------------------------------
 
-#include <Einsums/Debugging.hpp>
-#include <Einsums/SIMD/ComplexVec.hpp>
-#include <Einsums/SIMD/Shuffle.hpp>
-
+#include <Stripes/ComplexVec.hpp>
+#include <Stripes/Shuffle.hpp>
 #include <algorithm>
 #include <complex>
 #include <memory>
@@ -14,7 +12,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("CVec complex_broadcast and load round-trip", "[simd][complex]", float, double) {
     constexpr int          N = CVec<TestType>::complex_lanes;

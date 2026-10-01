@@ -14,18 +14,16 @@
 /// into a Vec of column accumulators reads memory contiguously. Both are here, and both are
 /// checked against a scalar loop.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Gather.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-
+#include <Stripes/Gather.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Reduce.hpp>
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -59,7 +57,7 @@ void column_sums_by_row(double const *m, std::size_t rows, std::size_t cols, dou
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const   rows = 101, cols = 13;
     std::vector<double> m(rows * cols);
     for (std::size_t i = 0; i < m.size(); ++i) {
@@ -81,8 +79,4 @@ int einsums_main() {
         failures += (gathered != expect) + (by_row[c] != expect);
     }
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

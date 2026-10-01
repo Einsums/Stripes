@@ -8,11 +8,10 @@
 // run must equal the scalar run bit for bit, so a scalar instantiation is an exact reference for the
 // vector one, over NaN, signed zeros, infinities and the values that separate the rounding modes.
 
-#include <Einsums/SIMD/Generic.hpp>
-#include <Einsums/SIMD/Math.hpp>
-#include <Einsums/SIMD/RungLadder.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
-
+#include <Stripes/Generic.hpp>
+#include <Stripes/Math.hpp>
+#include <Stripes/RungLadder.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -22,7 +21,7 @@
 
 #include <catch2/catch_all.hpp>
 
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace {
 
@@ -81,10 +80,10 @@ void check_matches_scalar(Op op, char const *name) {
 // (Catch's type lists split on commas, so the wide types are named first.)
 using DoubleAtFloatWidth = simd::Vec<double, simd::lanes<float>>;
 using FloatFourWide      = simd::Vec<float, 4 * simd::lanes<float>>;
-#define EINSUMS_GENERIC_VALUE_TYPES simd::Vec<float>, simd::Vec<double>, DoubleAtFloatWidth, FloatFourWide
+#define STRIPES_GENERIC_VALUE_TYPES simd::Vec<float>, simd::Vec<double>, DoubleAtFloatWidth, FloatFourWide
 
 TEMPLATE_TEST_CASE("arithmetic, mixed operators and compound assignment match the scalar instantiation", "[simd][generic]",
-                   EINSUMS_GENERIC_VALUE_TYPES) {
+                   STRIPES_GENERIC_VALUE_TYPES) {
     using V = TestType;
     using T = simd::scalar_t<V>;
     check_matches_scalar<V>([](auto x, auto y) { return x + y; }, "+");
@@ -110,7 +109,7 @@ TEMPLATE_TEST_CASE("arithmetic, mixed operators and compound assignment match th
         "compound");
 }
 
-TEMPLATE_TEST_CASE("math, fused forms and rounding match the scalar instantiation", "[simd][generic]", EINSUMS_GENERIC_VALUE_TYPES) {
+TEMPLATE_TEST_CASE("math, fused forms and rounding match the scalar instantiation", "[simd][generic]", STRIPES_GENERIC_VALUE_TYPES) {
     using V = TestType;
     using T = simd::scalar_t<V>;
     check_matches_scalar<V>([](auto x, auto y) { return simd::fmadd(x, y, x); }, "fmadd");
@@ -135,7 +134,7 @@ TEMPLATE_TEST_CASE("math, fused forms and rounding match the scalar instantiatio
     check_matches_scalar<V>([](auto x, auto y) { return simd::exp(simd::fnmadd(x, y, x)); }, "exp of an expression");
 }
 
-TEMPLATE_TEST_CASE("compares, masks and select match the scalar instantiation", "[simd][generic]", EINSUMS_GENERIC_VALUE_TYPES) {
+TEMPLATE_TEST_CASE("compares, masks and select match the scalar instantiation", "[simd][generic]", STRIPES_GENERIC_VALUE_TYPES) {
     using V = TestType;
     using T = simd::scalar_t<V>;
     check_matches_scalar<V>([](auto x, auto y) { return simd::select(simd::cmp_eq(x, y), x, y + 1); }, "cmp_eq");
@@ -239,7 +238,7 @@ V interpolate(V x, simd::scalar_t<V> const *const (&taylor)[4], simd::scalar_t<V
 } // namespace
 
 TEMPLATE_TEST_CASE("a table interpolation written once gives the same lanes as its scalar instantiation", "[simd][generic]",
-                   EINSUMS_GENERIC_VALUE_TYPES) {
+                   STRIPES_GENERIC_VALUE_TYPES) {
     using V           = TestType;
     using T           = simd::scalar_t<V>;
     constexpr int  L  = simd::lanes_v<V>;
@@ -298,7 +297,7 @@ TEST_CASE("the generic layer's overloads resolve as designed", "[simd][generic]"
     // Under using namespace, the C library still answers for scalars: the scalar overloads are
     // constrained templates, which never beat a plain function.
     {
-        using namespace einsums::simd;
+        using namespace stripes;
         CHECK(sqrt(2.0) == std::sqrt(2.0));
         CHECK(round(2.5) == 3.0);
         CHECK(abs(-3) == 3);
@@ -312,7 +311,7 @@ TEST_CASE("the generic layer's overloads resolve as designed", "[simd][generic]"
     CHECK(simd::select(true, 1.0, 2.0) == 1.0);
 }
 
-TEMPLATE_TEST_CASE("masked loadu, storeu and lookup match the scalar instantiation", "[simd][generic][mask]", EINSUMS_GENERIC_VALUE_TYPES) {
+TEMPLATE_TEST_CASE("masked loadu, storeu and lookup match the scalar instantiation", "[simd][generic][mask]", STRIPES_GENERIC_VALUE_TYPES) {
     // The vector run masks its lanes with a Mask<T, N>; the scalar run on lane i uses the bool for that lane.
     using V          = TestType;
     using T          = simd::scalar_t<V>;

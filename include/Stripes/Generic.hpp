@@ -5,16 +5,14 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Convert.hpp>
-#include <Einsums/SIMD/Gather.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-#include <Einsums/SIMD/Wide.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Convert.hpp>
+#include <Stripes/Gather.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Vec.hpp>
+#include <Stripes/Wide.hpp>
 #include <bit>
 #include <cmath>
 #include <concepts>
@@ -48,17 +46,17 @@
 // bool too: select, any, all, none, count, the bitwise mask combinations, and
 // the masked loadu, storeu and lookup. Write !m, not ~m, in generic code.
 //
-// Call them qualified, einsums::simd::fmadd(...): argument-dependent lookup
+// Call them qualified, stripes::fmadd(...): argument-dependent lookup
 // finds the vector forms but nothing for double. Each scalar overload is a
 // template constrained to arithmetic types, never a plain function, so under
-// using namespace einsums::simd an unqualified sqrt(2.0) still means the C
+// using namespace stripes an unqualified sqrt(2.0) still means the C
 // library's sqrt. std::min and std::max are templates too, so code that has
-// both using namespace std and using namespace einsums::simd must qualify an
+// both using namespace std and using namespace stripes must qualify an
 // unqualified min or max on scalars, which would otherwise be ambiguous.
 // ===========================================================================
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ---------------------------------------------------------------------------
 // Traits.
@@ -107,7 +105,7 @@ inline constexpr int lanes_v = detail::lanes_of<V>::value;
 
 /// A V holding x in every lane.
 template <typename V>
-EINSUMS_FORCEINLINE V splat(scalar_t<V> x) {
+STRIPES_FORCEINLINE V splat(scalar_t<V> x) {
     if constexpr (!is_vec_v<V>) {
         return x;
     } else if constexpr (V::native) {
@@ -121,7 +119,7 @@ EINSUMS_FORCEINLINE V splat(scalar_t<V> x) {
 
 /// lanes_v<V> consecutive elements from p, which need no alignment.
 template <typename V>
-EINSUMS_FORCEINLINE V load(scalar_t<V> const *p) {
+STRIPES_FORCEINLINE V load(scalar_t<V> const *p) {
     if constexpr (!is_vec_v<V>) {
         return *p;
     } else if constexpr (V::native) {
@@ -138,11 +136,11 @@ EINSUMS_FORCEINLINE V load(scalar_t<V> const *p) {
 
 /// Write v's lanes to consecutive elements from p, which needs no alignment.
 template <typename T, int N>
-EINSUMS_FORCEINLINE void store(T *p, Vec<T, N> v) {
+STRIPES_FORCEINLINE void store(T *p, Vec<T, N> v) {
     storeu(p, v);
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE void store(T *p, T v) {
+STRIPES_FORCEINLINE void store(T *p, T v) {
     *p = v;
 }
 
@@ -150,20 +148,20 @@ EINSUMS_FORCEINLINE void store(T *p, T v) {
 /// distinct name from gather, whose (base, integer) form is a strided load and would silently
 /// accept a scalar index.
 template <typename T>
-EINSUMS_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx) {
+STRIPES_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx) {
     return gather(base, idx);
 }
 template <std::floating_point T, std::integral I>
-EINSUMS_FORCEINLINE T lookup(T const *base, I idx) {
+STRIPES_FORCEINLINE T lookup(T const *base, I idx) {
     return base[idx];
 }
 /// lookup in the lanes m sets, zero elsewhere; an inactive lane's index is never dereferenced.
 template <typename T>
-EINSUMS_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx, Mask<T> m) {
+STRIPES_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx, Mask<T> m) {
     return gather(base, idx, m);
 }
 template <std::floating_point T, std::integral I>
-EINSUMS_FORCEINLINE T lookup(T const *base, I idx, bool m) {
+STRIPES_FORCEINLINE T lookup(T const *base, I idx, bool m) {
     return m ? base[idx] : T(0);
 }
 
@@ -188,9 +186,9 @@ template <typename T, typename I, int N>
 inline constexpr bool native_lookup = N == VecTraits<T>::lanes && std::same_as<I, gather_index_t<T>>;
 
 #if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(__AVX2__)
-#    define EINSUMS_SIMD_HAVE_GATHER_PD_I32 1
+#    define STRIPES_HAVE_GATHER_PD_I32 1
 /// The doubles at half @p h of a 32-bit index register: one double register's worth of lanes.
-EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
+STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
 #    if defined(__AVX512F__) && defined(__AVX512VL__)
     __m256i const half = h == 0 ? _mm512_castsi512_si256(idx.reg) : _mm512_extracti64x4_epi64(idx.reg, 1);
     return _mm512_i32gather_pd(half, base, sizeof(double));
@@ -199,7 +197,7 @@ EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> i
     return _mm256_i32gather_pd(base, half, sizeof(double));
 #    endif
 }
-EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h, Mask<double> m) {
+STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h, Mask<double> m) {
 #    if defined(__AVX512F__) && defined(__AVX512VL__)
     __m256i const half = h == 0 ? _mm512_castsi512_si256(idx.reg) : _mm512_extracti64x4_epi64(idx.reg, 1);
     return _mm512_mask_i32gather_pd(_mm512_setzero_pd(), m.reg, half, base, sizeof(double));
@@ -209,16 +207,16 @@ EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> i
 #    endif
 }
 #elif !defined(__AVX__) && (defined(__x86_64__) || defined(_M_X64))
-#    define EINSUMS_SIMD_HAVE_GATHER_PD_I32 1
+#    define STRIPES_HAVE_GATHER_PD_I32 1
 // SSE has no gather: the two indices of half h come out of the register and the doubles are loaded
 // into one, with no round trip through memory, which stalls on store forwarding.
-EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
+STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
     __m128i const pair = h == 0 ? idx.reg : _mm_unpackhi_epi64(idx.reg, idx.reg);
     int const     i0   = _mm_cvtsi128_si32(pair);
     int const     i1   = _mm_cvtsi128_si32(_mm_shuffle_epi32(pair, _MM_SHUFFLE(1, 1, 1, 1)));
     return _mm_setr_pd(base[i0], base[i1]);
 }
-EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h, Mask<double> m) {
+STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h, Mask<double> m) {
     __m128i const pair = h == 0 ? idx.reg : _mm_unpackhi_epi64(idx.reg, idx.reg);
     int const     set  = _mm_movemask_pd(m.reg);
     double const  d0   = (set & 1) ? base[_mm_cvtsi128_si32(pair)] : 0.0;
@@ -229,7 +227,7 @@ EINSUMS_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> i
 
 /// The fallback: every lane's index read through memory, and only the lanes @p bits sets loaded.
 template <typename T, typename I, int N>
-EINSUMS_FORCEINLINE Vec<T, N> lookup_lanes(T const *base, Vec<I, N> idx, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<T, N> lookup_lanes(T const *base, Vec<I, N> idx, uint64_t bits) {
     alignas(native_alignment) I at[N];
     alignas(native_alignment) T out[N] = {};
     store(at, idx);
@@ -244,7 +242,7 @@ EINSUMS_FORCEINLINE Vec<T, N> lookup_lanes(T const *base, Vec<I, N> idx, uint64_
 
 template <std::floating_point T, detail::lookup_index I, int N>
     requires(!detail::native_lookup<T, I, N>)
-EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
+STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
     constexpr int LT = VecTraits<T>::lanes;
     constexpr int LI = VecTraits<I>::lanes;
     if constexpr (LT == LI && std::same_as<I, gather_index_t<T>>) {
@@ -254,7 +252,7 @@ EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
         }
         return r;
     }
-#if defined(EINSUMS_SIMD_HAVE_GATHER_PD_I32)
+#if defined(STRIPES_HAVE_GATHER_PD_I32)
     else if constexpr (std::same_as<T, double> && std::same_as<I, int32_t> && LI == 2 * LT) {
         Vec<T, N> r;
         for (int k = 0; k < N / LI; ++k) {
@@ -272,7 +270,7 @@ EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
 
 template <std::floating_point T, detail::lookup_index I, int N>
     requires(!detail::native_lookup<T, I, N>)
-EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m) {
+STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m) {
     constexpr int LT = VecTraits<T>::lanes;
     constexpr int LI = VecTraits<I>::lanes;
     if constexpr (LT == LI && std::same_as<I, gather_index_t<T>>) {
@@ -282,7 +280,7 @@ EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m)
         }
         return r;
     }
-#if defined(EINSUMS_SIMD_HAVE_GATHER_PD_I32)
+#if defined(STRIPES_HAVE_GATHER_PD_I32)
     else if constexpr (std::same_as<T, double> && std::same_as<I, int32_t> && LI == 2 * LT) {
         Vec<T, N> r;
         for (int k = 0; k < N / LI; ++k) {
@@ -300,11 +298,11 @@ EINSUMS_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m)
 
 /// The scalar forms of the masked load and store: *p where m is true, and zero or nothing otherwise.
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE T loadu(T const *p, bool m) {
+STRIPES_FORCEINLINE T loadu(T const *p, bool m) {
     return m ? *p : T(0);
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE void storeu(T *p, T v, bool m) {
+STRIPES_FORCEINLINE void storeu(T *p, T v, bool m) {
     if (m) {
         *p = v;
     }
@@ -316,14 +314,14 @@ EINSUMS_FORCEINLINE void storeu(T *p, T v, bool m) {
 
 /// Whether the fused forms round once on this build, as the vector fmadd does.
 inline constexpr bool scalar_fma_fused =
-#if defined(EINSUMS_SIMD_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64)
+#if defined(STRIPES_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64)
     true;
 #else
     false;
 #endif
 
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T fmadd(T a, T b, T c) {
+STRIPES_FORCEINLINE T fmadd(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(a, b, c);
     } else {
@@ -331,7 +329,7 @@ EINSUMS_FORCEINLINE T fmadd(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T fmsub(T a, T b, T c) {
+STRIPES_FORCEINLINE T fmsub(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(a, b, -c);
     } else {
@@ -339,7 +337,7 @@ EINSUMS_FORCEINLINE T fmsub(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T fnmadd(T a, T b, T c) {
+STRIPES_FORCEINLINE T fnmadd(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(-a, b, c);
     } else {
@@ -347,7 +345,7 @@ EINSUMS_FORCEINLINE T fnmadd(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T fnmsub(T a, T b, T c) {
+STRIPES_FORCEINLINE T fnmsub(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(-a, b, -c);
     } else {
@@ -356,51 +354,51 @@ EINSUMS_FORCEINLINE T fnmsub(T a, T b, T c) {
 }
 
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T div(T a, T b) {
+STRIPES_FORCEINLINE T div(T a, T b) {
     return a / b;
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T sqrt(T a) {
+STRIPES_FORCEINLINE T sqrt(T a) {
     return std::sqrt(a);
 }
 /// a < b ? a : b exactly, as the vector min: a NaN on either side, or two zeros, give b.
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T min(T a, T b) {
+STRIPES_FORCEINLINE T min(T a, T b) {
     return a < b ? a : b;
 }
 /// a > b ? a : b exactly, as the vector max.
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T max(T a, T b) {
+STRIPES_FORCEINLINE T max(T a, T b) {
     return a > b ? a : b;
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T abs(T a) {
+STRIPES_FORCEINLINE T abs(T a) {
     return std::fabs(a);
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T neg(T a) {
+STRIPES_FORCEINLINE T neg(T a) {
     return -a;
 }
 
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T floor(T x) {
+STRIPES_FORCEINLINE T floor(T x) {
     return std::floor(x);
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T ceil(T x) {
+STRIPES_FORCEINLINE T ceil(T x) {
     return std::ceil(x);
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T trunc(T x) {
+STRIPES_FORCEINLINE T trunc(T x) {
     return std::trunc(x);
 }
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T round(T x) {
+STRIPES_FORCEINLINE T round(T x) {
     return std::round(x);
 }
 /// Ties to even, in the default rounding mode; the vector form ignores the mode.
 template <std::floating_point T>
-EINSUMS_FORCEINLINE T round_even(T x) {
+STRIPES_FORCEINLINE T round_even(T x) {
     return std::nearbyint(x);
 }
 
@@ -409,65 +407,65 @@ EINSUMS_FORCEINLINE T round_even(T x) {
 // ---------------------------------------------------------------------------
 
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_eq(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_eq(T a, T b) {
     return a == b;
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_ne(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_ne(T a, T b) {
     return a != b;
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_lt(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_lt(T a, T b) {
     return a < b;
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_le(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_le(T a, T b) {
     return a <= b;
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_gt(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_gt(T a, T b) {
     return a > b;
 }
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE bool cmp_ge(T a, T b) {
+STRIPES_FORCEINLINE bool cmp_ge(T a, T b) {
     return a >= b;
 }
 
 template <detail::arithmetic T>
-EINSUMS_FORCEINLINE T select(bool mask, T a, T b) {
+STRIPES_FORCEINLINE T select(bool mask, T a, T b) {
     return mask ? a : b;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool any(B mask) {
+STRIPES_FORCEINLINE bool any(B mask) {
     return mask;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool all(B mask) {
+STRIPES_FORCEINLINE bool all(B mask) {
     return mask;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool none(B mask) {
+STRIPES_FORCEINLINE bool none(B mask) {
     return !mask;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE int count(B mask) {
+STRIPES_FORCEINLINE int count(B mask) {
     return mask ? 1 : 0;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool bitwise_and(B a, B b) {
+STRIPES_FORCEINLINE bool bitwise_and(B a, B b) {
     return a && b;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool bitwise_or(B a, B b) {
+STRIPES_FORCEINLINE bool bitwise_or(B a, B b) {
     return a || b;
 }
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool bitwise_xor(B a, B b) {
+STRIPES_FORCEINLINE bool bitwise_xor(B a, B b) {
     return a != b;
 }
 /// a && !b, as the vector bitwise_andnot is a & ~b.
 template <std::same_as<bool> B>
-EINSUMS_FORCEINLINE bool bitwise_andnot(B a, B b) {
+STRIPES_FORCEINLINE bool bitwise_andnot(B a, B b) {
     return a && !b;
 }
 
@@ -478,17 +476,17 @@ EINSUMS_FORCEINLINE bool bitwise_andnot(B a, B b) {
 
 template <detail::arithmetic To, detail::arithmetic From>
     requires(sizeof(To) == sizeof(From))
-EINSUMS_FORCEINLINE To bitcast(From x) {
+STRIPES_FORCEINLINE To bitcast(From x) {
     return std::bit_cast<To>(x);
 }
 template <int S, std::integral T>
     requires(!std::same_as<T, bool>)
-EINSUMS_FORCEINLINE T shift_left(T v) {
+STRIPES_FORCEINLINE T shift_left(T v) {
     return static_cast<T>(static_cast<std::make_unsigned_t<T>>(v) << S);
 }
 template <int S, std::integral T>
     requires(!std::same_as<T, bool>)
-EINSUMS_FORCEINLINE T shift_right(T v) {
+STRIPES_FORCEINLINE T shift_right(T v) {
     return static_cast<T>(static_cast<std::make_unsigned_t<T>>(v) >> S);
 }
 
@@ -500,7 +498,7 @@ EINSUMS_FORCEINLINE T shift_right(T v) {
 /// out-of-range value, as x86 does, where a plain cast would be undefined. Integer to floating point
 /// rounds to nearest, as do double to float and the vector conversions.
 template <detail::arithmetic To, detail::arithmetic From>
-EINSUMS_FORCEINLINE To convert(From x) {
+STRIPES_FORCEINLINE To convert(From x) {
     if constexpr (std::floating_point<From> && std::integral<To>) {
         // The range of To as From. Both limits are powers of two, so From holds them exactly.
         constexpr From low  = static_cast<From>(std::numeric_limits<To>::min());
@@ -515,5 +513,5 @@ EINSUMS_FORCEINLINE To convert(From x) {
     }
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

@@ -15,10 +15,8 @@
 /// Here: replace every NaN with zero, clamp to [lo, hi], and count how many values were changed.
 /// A NaN is the one value not equal to itself, so cmp_ne(v, v) finds them.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -27,7 +25,7 @@
 #include <limits>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -62,7 +60,7 @@ std::size_t sanitize(std::size_t n, float *x, float lo, float hi) {
 
 } // namespace
 
-int einsums_main() {
+int main() {
     float const        nan = std::numeric_limits<float>::quiet_NaN();
     std::vector<float> x   = {0.5f, -3.0f, nan, 2.0f, 1.0f, 7.5f, -0.25f, nan, 0.0f, 1.5f, -1.0f, 4.0f, 0.75f};
     std::vector<float> expect(x.size());
@@ -81,8 +79,4 @@ int einsums_main() {
     }
     std::cout << "\n";
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

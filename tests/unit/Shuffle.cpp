@@ -3,11 +3,9 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 //----------------------------------------------------------------------------------------------
 
-#include <Einsums/Debugging.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Shuffle.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Shuffle.hpp>
+#include <Stripes/Vec.hpp>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -19,7 +17,7 @@
 #    include <unistd.h>
 #endif
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("transpose_inplace correctness", "[simd]", float, double) {
     constexpr int N = Vec<TestType>::lanes;

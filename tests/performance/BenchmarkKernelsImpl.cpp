@@ -5,24 +5,23 @@
 
 // The benchmark kernels, compiled once per SIMD dispatch rung; see BenchmarkKernels.hpp.
 
-#include <Einsums/SIMD/Generic.hpp>
-#include <Einsums/SIMD/Math.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-#include <Einsums/SIMD/Shuffle.hpp>
-
+#include <Stripes/Generic.hpp>
+#include <Stripes/Math.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Reduce.hpp>
+#include <Stripes/Shuffle.hpp>
 #include <cstddef>
 #include <cstdint>
 
 #include "BenchmarkKernels.hpp"
 
-#if !defined(EINSUMS_SIMD_ARCH_NS)
-#    define EINSUMS_SIMD_ARCH_NS arch_native
+#if !defined(STRIPES_ARCH_NS)
+#    define STRIPES_ARCH_NS arch_native
 #endif
 
-namespace simd_bench::EINSUMS_SIMD_ARCH_NS {
+namespace simd_bench::STRIPES_ARCH_NS {
 
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace {
 
@@ -207,7 +206,7 @@ constexpr int LF = simd::lanes<float>;
 
 Kernels const &kernels() noexcept {
     static constexpr Kernels table{
-        .vector_bits         = einsums::simd::native_bits,
+        .vector_bits         = stripes::native_bits,
         .gather_f32          = &gather_kernel<simd::Vec<float>, int32_t>,
         .gather_f64          = &gather_kernel<simd::Vec<double>, int64_t>,
         .gather_f64_i32      = &gather_kernel<simd::Vec<double, LF>, int32_t>,
@@ -238,4 +237,4 @@ Kernels const &kernels() noexcept {
     return table;
 }
 
-} // namespace simd_bench::EINSUMS_SIMD_ARCH_NS
+} // namespace simd_bench::STRIPES_ARCH_NS

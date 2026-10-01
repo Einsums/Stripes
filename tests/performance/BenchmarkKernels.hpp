@@ -10,8 +10,7 @@
 
 #pragma once
 
-#include <Einsums/SIMD/RungLadder.hpp>
-
+#include <Stripes/RungLadder.hpp>
 #include <cstddef>
 #include <cstdint>
 
@@ -89,13 +88,13 @@ struct Kernels {
     void (*segsum_interleaved)(double const *v, int32_t const *rows, int batches, double *out);
 };
 
-#define EINSUMS_SIMD_BENCH_DECLARE_RUNG(ns)                                                                                                \
+#define STRIPES_BENCH_DECLARE_RUNG(ns)                                                                                                     \
     namespace ns {                                                                                                                         \
     Kernels const &kernels() noexcept;                                                                                                     \
     }
 
-EINSUMS_SIMD_FOR_EACH_BUILT_RUNG(EINSUMS_SIMD_BENCH_DECLARE_RUNG)
+STRIPES_FOR_EACH_BUILT_RUNG(STRIPES_BENCH_DECLARE_RUNG)
 
-#undef EINSUMS_SIMD_BENCH_DECLARE_RUNG
+#undef STRIPES_BENCH_DECLARE_RUNG
 
 } // namespace simd_bench

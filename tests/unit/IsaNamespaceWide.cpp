@@ -6,7 +6,7 @@
 // The second translation unit of IsaNamespace_test, compiled at the v3 rung's flags while the
 // first is compiled at the project's baseline. See IsaNamespace.cpp.
 
-#include <Einsums/SIMD/Vec.hpp>
+#include <Stripes/Vec.hpp>
 
 #include "IsaNamespaceProbe.hpp"
 

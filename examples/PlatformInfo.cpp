@@ -10,18 +10,16 @@
 /// unit is compiled: this file's Vec<float> is as wide as its compiler flags allow, whatever CPU it
 /// later runs on. Runtime-dispatched kernels, compiled once per instruction-set rung (see
 /// RuntimeDispatch.cpp), pick a rung when the program runs, from what the CPU and operating system
-/// support and from --einsums:simd:arch, which can only lower it.
+/// support and from STRIPES_ARCH, which can only lower it.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Platform.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
+#include <Stripes/Vec.hpp>
 #include <iostream>
 
-using namespace einsums::simd;
+using namespace stripes;
 
-int einsums_main() {
+int main() {
     // Compile time: the width of every inline operation in this file.
     std::cout << "This file was compiled for " << native_bits << "-bit vectors: " << lanes<float> << " floats or "
               << lanes<double> << " doubles per Vec.\n";
@@ -38,12 +36,8 @@ int einsums_main() {
     }
     std::cout << "\nHighest rung this CPU supports: " << to_string(highest_supported(cpu)) << "\n";
     std::cout << "Rung the dispatched kernels use:  " << to_string(selected_arch()) << "\n";
-    std::cout << "(Run with --einsums:simd:arch=baseline to see the second line drop.)\n";
+    std::cout << "(Run with STRIPES_ARCH=baseline to see the second line drop.)\n";
 
     // The selected rung can never exceed what the CPU supports.
     return supports(cpu, selected_arch()) ? 0 : 1;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

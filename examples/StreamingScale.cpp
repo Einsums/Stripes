@@ -20,18 +20,16 @@
 /// Modern cores prefetch sequential reads well on their own; the explicit form matters more for
 /// the irregular patterns the hardware cannot predict.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Prefetch.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Prefetch.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
 #include <new>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -52,7 +50,7 @@ void scale_streaming(std::size_t n, double alpha, double const *src, double *dst
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const n = std::size_t{1} << 22; // 32 MiB per array: larger than any cache
 
     // Aligned operator new is the portable way to get a Vec-aligned array (MSVC has no std::aligned_alloc).
@@ -77,8 +75,4 @@ int einsums_main() {
     }
     std::cout << "scaled " << n << " doubles with streaming stores: " << (wrong ? "FAILED" : "ok") << "\n";
     return wrong ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

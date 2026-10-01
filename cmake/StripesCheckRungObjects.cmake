@@ -3,7 +3,7 @@
 # Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 #----------------------------------------------------------------------------------------------
 
-# Script mode (cmake -P), run by the test einsums_add_simd_rung_objects_test()
+# Script mode (cmake -P), run by the test stripes_add_rung_objects_test()
 # registers. Fails when an object compiled for one SIMD dispatch rung defines a
 # weak symbol outside that rung's namespace.
 #
@@ -22,7 +22,7 @@
 #   OBJECTS  the target's object files, joined with '|'
 
 if(NOT NM OR NOT OBJECTS)
-  message(FATAL_ERROR "Einsums_CheckRungObjects.cmake needs -DNM=<nm> and -DOBJECTS=<a|b|...>")
+  message(FATAL_ERROR "StripesCheckRungObjects.cmake needs -DNM=<nm> and -DOBJECTS=<a|b|...>")
 endif()
 
 string(REPLACE "|" ";" _objects "${OBJECTS}")

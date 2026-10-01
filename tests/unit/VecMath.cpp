@@ -7,9 +7,8 @@
 // scalar reference, bit for bit. The inputs pair every special value with every other in some lane,
 // so NaN, signed zeros and infinities reach each lane position of every backend.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -19,7 +18,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 

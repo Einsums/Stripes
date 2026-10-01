@@ -3,13 +3,14 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 //----------------------------------------------------------------------------------------------
 
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/RungLadder.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
 
 #include <catch2/catch_all.hpp>
 
-using einsums::simd::CpuFeatures;
-using einsums::simd::InstructionSet;
+using stripes::CpuFeatures;
+using stripes::InstructionSet;
 
 namespace {
 
@@ -17,7 +18,7 @@ namespace {
 // construction mirrors what detect() produces on real hardware.
 CpuFeatures features_v2() {
     CpuFeatures f;
-    f.arch       = einsums::simd::Architecture::X86;
+    f.arch       = stripes::Architecture::X86;
     f.sse2       = true;
     f.sse3       = true;
     f.ssse3      = true;
@@ -59,7 +60,7 @@ CpuFeatures features_v4() {
 // SVE: Apple M4.
 CpuFeatures features_m4() {
     CpuFeatures f;
-    f.arch       = einsums::simd::Architecture::Aarch64;
+    f.arch       = stripes::Architecture::Aarch64;
     f.neon       = true;
     f.sme        = true;
     f.sme2       = true;
@@ -78,7 +79,7 @@ CpuFeatures features_sme_with_sve2() {
 // An Armv9 core with SVE2 and no SME (Graviton4, Grace).
 CpuFeatures features_sve2_only() {
     CpuFeatures f;
-    f.arch = einsums::simd::Architecture::Aarch64;
+    f.arch = stripes::Architecture::Aarch64;
     f.neon = true;
     f.sve  = true;
     f.sve2 = true;
@@ -86,21 +87,21 @@ CpuFeatures features_sve2_only() {
 }
 
 // What the sme rung's flags enable on this compiler, probed at configure time.
-constexpr bool sme_rung_enables_sve  = EINSUMS_SIMD_SME_RUNG_ENABLES_SVE != 0;
-constexpr bool sme_rung_enables_sve2 = EINSUMS_SIMD_SME_RUNG_ENABLES_SVE2 != 0;
+constexpr bool sme_rung_enables_sve  = STRIPES_SME_RUNG_ENABLES_SVE != 0;
+constexpr bool sme_rung_enables_sve2 = STRIPES_SME_RUNG_ENABLES_SVE2 != 0;
 
 } // namespace
 
 TEST_CASE("cpu_features: sane on the host", "[simd][runtime-features]") {
-    auto const &f = einsums::simd::cpu_features();
+    auto const &f = stripes::cpu_features();
 
 #if defined(__x86_64__) || defined(_M_X64)
     // SSE2 is part of the x86-64 baseline; every x86-64 CPU has it.
-    REQUIRE(f.arch == einsums::simd::Architecture::X86);
+    REQUIRE(f.arch == stripes::Architecture::X86);
     REQUIRE(f.sse2);
     REQUIRE_FALSE(f.neon);
 #elif defined(__aarch64__) || defined(_M_ARM64)
-    REQUIRE(f.arch == einsums::simd::Architecture::Aarch64);
+    REQUIRE(f.arch == stripes::Architecture::Aarch64);
     REQUIRE(f.neon);
     REQUIRE_FALSE(f.sse2);
     if (f.sve2) {
@@ -124,55 +125,55 @@ TEST_CASE("cpu_features: sane on the host", "[simd][runtime-features]") {
     }
 
     // Detection is cached: same object every call.
-    CHECK(&einsums::simd::cpu_features() == &f);
+    CHECK(&stripes::cpu_features() == &f);
 }
 
 TEST_CASE("cpu_features: agrees with the compile-time baseline", "[simd][runtime-features]") {
-    auto const &f = einsums::simd::cpu_features();
+    auto const &f = stripes::cpu_features();
 
     // Whatever ISA this test was COMPILED for must be present at runtime,
     // or the binary could not be running. This cross-checks detect()
     // against Platform.hpp on every machine the test suite runs on.
-    if constexpr (einsums::simd::has_sse42) {
+    if constexpr (stripes::has_sse42) {
         CHECK(f.sse42);
     }
-    if constexpr (einsums::simd::has_avx2) {
+    if constexpr (stripes::has_avx2) {
         CHECK(f.avx2);
     }
-    if constexpr (einsums::simd::has_avx512) {
+    if constexpr (stripes::has_avx512) {
         CHECK(f.avx512f);
         CHECK(f.avx512vl);
     }
-    if constexpr (einsums::simd::has_neon) {
+    if constexpr (stripes::has_neon) {
         CHECK(f.neon);
     }
 }
 
 TEST_CASE("highest_supported: full psABI gates", "[simd][runtime-features]") {
-    CHECK(einsums::simd::highest_supported(CpuFeatures{}) == InstructionSet::Baseline);
-    CHECK(einsums::simd::highest_supported(features_v2()) == InstructionSet::V2);
-    CHECK(einsums::simd::highest_supported(features_v3()) == InstructionSet::V3);
-    CHECK(einsums::simd::highest_supported(features_v4()) == InstructionSet::V4);
+    CHECK(stripes::highest_supported(CpuFeatures{}) == InstructionSet::Baseline);
+    CHECK(stripes::highest_supported(features_v2()) == InstructionSet::V2);
+    CHECK(stripes::highest_supported(features_v3()) == InstructionSet::V3);
+    CHECK(stripes::highest_supported(features_v4()) == InstructionSet::V4);
 
     SECTION("one missing extension drops the whole level") {
         auto f = features_v3();
         f.bmi2 = false;
-        CHECK(einsums::simd::highest_supported(f) == InstructionSet::V2);
+        CHECK(stripes::highest_supported(f) == InstructionSet::V2);
     }
 
     SECTION("CPU support without OS state does not qualify") {
         auto f      = features_v4();
         f.os_avx512 = false;
-        CHECK(einsums::simd::highest_supported(f) == InstructionSet::V3);
+        CHECK(stripes::highest_supported(f) == InstructionSet::V3);
 
         auto g   = features_v3();
         g.os_avx = false;
-        CHECK(einsums::simd::highest_supported(g) == InstructionSet::V2);
+        CHECK(stripes::highest_supported(g) == InstructionSet::V2);
     }
 }
 
 TEST_CASE("parse_instruction_set / to_string", "[simd][runtime-features]") {
-    using einsums::simd::parse_instruction_set;
+    using stripes::parse_instruction_set;
 
     CHECK(parse_instruction_set("baseline") == InstructionSet::Baseline);
     CHECK(parse_instruction_set("v2") == InstructionSet::V2);
@@ -190,13 +191,13 @@ TEST_CASE("parse_instruction_set / to_string", "[simd][runtime-features]") {
 
     // Round trip through the canonical names.
     for (auto set : {InstructionSet::Baseline, InstructionSet::V2, InstructionSet::V3, InstructionSet::V4, InstructionSet::Sme}) {
-        CHECK(parse_instruction_set(einsums::simd::to_string(set)) == set);
+        CHECK(parse_instruction_set(stripes::to_string(set)) == set);
     }
 }
 
 TEST_CASE("preference_order: one ladder per architecture, ending in Baseline", "[simd][runtime-features]") {
-    using einsums::simd::Architecture;
-    using einsums::simd::preference_order;
+    using stripes::Architecture;
+    using stripes::preference_order;
 
     auto const x86 = preference_order(Architecture::X86);
     REQUIRE(x86.size() == 4);
@@ -216,7 +217,7 @@ TEST_CASE("preference_order: one ladder per architecture, ending in Baseline", "
 }
 
 TEST_CASE("supports: rungs never cross architectures", "[simd][runtime-features]") {
-    using einsums::simd::supports;
+    using stripes::supports;
 
     // Baseline runs everywhere.
     CHECK(supports(CpuFeatures{}, InstructionSet::Baseline));
@@ -227,7 +228,7 @@ TEST_CASE("supports: rungs never cross architectures", "[simd][runtime-features]
     // runs an x86 level, whatever the other fields claim.
     CHECK_FALSE(supports(features_v4(), InstructionSet::Sme));
     auto confused = features_v4();
-    confused.arch = einsums::simd::Architecture::Aarch64;
+    confused.arch = stripes::Architecture::Aarch64;
     CHECK_FALSE(supports(confused, InstructionSet::V2));
     CHECK_FALSE(supports(confused, InstructionSet::V4));
 
@@ -236,11 +237,13 @@ TEST_CASE("supports: rungs never cross architectures", "[simd][runtime-features]
     CHECK_FALSE(supports(features_v3(), InstructionSet::V4));
 }
 
-TEST_CASE("supports: the sme rung requires what its flags enable", "[simd][runtime-features]") {
-    using einsums::simd::supports;
+TEST_CASE("supports: the sme rung is the hardware's SME2 and FP64 FMOPA", "[simd][runtime-features]") {
+    using stripes::supports;
 
-    // An SME core with SVE2 runs the rung however it was compiled.
     CHECK(supports(features_sme_with_sve2(), InstructionSet::Sme));
+    // Apple M4: the rung's instructions are there; whether a given build's sme
+    // code runs there is sme_rung_runs()'s question, not this one.
+    CHECK(supports(features_m4(), InstructionSet::Sme));
 
     // SVE without SME is not enough.
     CHECK_FALSE(supports(features_sve2_only(), InstructionSet::Sme));
@@ -249,12 +252,33 @@ TEST_CASE("supports: the sme rung requires what its flags enable", "[simd][runti
     auto no_f64       = features_sme_with_sve2();
     no_f64.sme_f64f64 = false;
     CHECK_FALSE(supports(no_f64, InstructionSet::Sme));
+}
 
-    // Apple M4 has SME2 and FP64 FMOPA but no non-streaming SVE. A compiler
-    // whose +sme2 also switches on SVE (GCC before 15) may put non-streaming
-    // SVE anywhere in the rung's TUs, which faults there, so such a build
-    // must not hand M4 the rung.
-    CHECK(supports(features_m4(), InstructionSet::Sme) == !(sme_rung_enables_sve || sme_rung_enables_sve2));
+TEST_CASE("sme_rung_runs: the code's requirements on top of the rung", "[simd][runtime-features]") {
+    using stripes::sme_rung_runs;
+    using stripes::SmeRungRequires;
+
+    // Built by a compiler whose +sme2 stays out of SVE (Clang, GCC 15): M4 runs it.
+    CHECK(sme_rung_runs(features_m4(), SmeRungRequires{false, false}));
+    // Built by one whose +sme2 also switches on SVE or SVE2 (GCC before 15): the
+    // code may hold non-streaming SVE anywhere, which faults on M4.
+    CHECK_FALSE(sme_rung_runs(features_m4(), SmeRungRequires{true, false}));
+    CHECK_FALSE(sme_rung_runs(features_m4(), SmeRungRequires{false, true}));
+    // Unknown requirements assume the worst.
+    CHECK_FALSE(sme_rung_runs(features_m4(), SmeRungRequires{}));
+
+    // A core with SVE2 runs it however it was built.
+    CHECK(sme_rung_runs(features_sme_with_sve2(), SmeRungRequires{}));
+    // No SME, no rung, whatever the requirements.
+    CHECK_FALSE(sme_rung_runs(features_sve2_only(), SmeRungRequires{false, false}));
+}
+
+TEST_CASE("STRIPES_SME_REQUIRES carries this target's probe", "[simd][runtime-features]") {
+    // This target is given the probed STRIPES_SME_RUNG_ENABLES_* (CMakeLists.txt), as
+    // stripes_add_dispatch_sources() gives them to a target that builds the sme rung.
+    stripes::SmeRungRequires const r = STRIPES_SME_REQUIRES;
+    CHECK(r.sve == sme_rung_enables_sve);
+    CHECK(r.sve2 == sme_rung_enables_sve2);
 }
 
 TEST_CASE("sme rung probe agrees with the known compiler behaviour", "[simd][runtime-features]") {
@@ -279,14 +303,13 @@ TEST_CASE("sme rung probe agrees with the known compiler behaviour", "[simd][run
 }
 
 TEST_CASE("highest_supported: aarch64 ladder", "[simd][runtime-features]") {
-    CHECK(einsums::simd::highest_supported(features_sme_with_sve2()) == InstructionSet::Sme);
-    CHECK(einsums::simd::highest_supported(features_sve2_only()) == InstructionSet::Baseline);
-    CHECK(einsums::simd::highest_supported(features_m4()) ==
-          (sme_rung_enables_sve || sme_rung_enables_sve2 ? InstructionSet::Baseline : InstructionSet::Sme));
+    CHECK(stripes::highest_supported(features_sme_with_sve2()) == InstructionSet::Sme);
+    CHECK(stripes::highest_supported(features_sve2_only()) == InstructionSet::Baseline);
+    CHECK(stripes::highest_supported(features_m4()) == InstructionSet::Sme);
 }
 
 TEST_CASE("resolve_arch: override semantics", "[simd][runtime-features]") {
-    using einsums::simd::resolve_arch;
+    using stripes::resolve_arch;
 
     auto const v4 = features_v4();
 
@@ -326,9 +349,9 @@ TEST_CASE("resolve_arch: override semantics", "[simd][runtime-features]") {
 }
 
 TEST_CASE("selected_arch: cached and supported by the host", "[simd][runtime-features]") {
-    auto const first = einsums::simd::selected_arch();
-    CHECK(einsums::simd::supports(einsums::simd::cpu_features(), first));
-    CHECK(einsums::simd::selected_arch() == first);
+    auto const first = stripes::selected_arch();
+    CHECK(stripes::supports(stripes::cpu_features(), first));
+    CHECK(stripes::selected_arch() == first);
 }
 
 namespace {
@@ -352,7 +375,7 @@ int ret_sme() {
 } // namespace
 
 TEST_CASE("select_for: walks the architecture's order from the start rung", "[simd][runtime-features]") {
-    using einsums::simd::select_for;
+    using stripes::select_for;
 
     SECTION("x86: falls through missing rungs toward Baseline") {
         auto const v4 = features_v4();
@@ -375,6 +398,17 @@ TEST_CASE("select_for: walks the architecture's order from the start rung", "[si
         CHECK(select_for<Fn>(sme, InstructionSet::Sme, ret_baseline, ret_v2, ret_v3, ret_v4, ret_sme)() == 5);
     }
 
+    SECTION("aarch64: an sme entry whose code needs SVE is skipped on a core without it") {
+        using stripes::SmeRungRequires;
+        auto const m4 = features_m4();
+        CHECK(select_for<Fn>(m4, InstructionSet::Sme, ret_baseline, nullptr, nullptr, nullptr, ret_sme, SmeRungRequires{false, false})() ==
+              5);
+        CHECK(select_for<Fn>(m4, InstructionSet::Sme, ret_baseline, nullptr, nullptr, nullptr, ret_sme, SmeRungRequires{true, true})() ==
+              0);
+        // Without requirements, the worst case.
+        CHECK(select_for<Fn>(m4, InstructionSet::Sme, ret_baseline, nullptr, nullptr, nullptr, ret_sme)() == 0);
+    }
+
     SECTION("aarch64: an unsupported entry is skipped even from the top") {
         CHECK(select_for<Fn>(features_sve2_only(), InstructionSet::Sme, ret_baseline, nullptr, nullptr, nullptr, ret_sme)() == 0);
     }
@@ -386,7 +420,7 @@ TEST_CASE("select_for: walks the architecture's order from the start rung", "[si
 
 TEST_CASE("select: dispatches the host's selected rung", "[simd][runtime-features]") {
     int const expected = [] {
-        switch (einsums::simd::selected_arch()) {
+        switch (stripes::selected_arch()) {
         case InstructionSet::V2:
             return 2;
         case InstructionSet::V3:
@@ -394,13 +428,14 @@ TEST_CASE("select: dispatches the host's selected rung", "[simd][runtime-feature
         case InstructionSet::V4:
             return 4;
         case InstructionSet::Sme:
-            return 5;
+            // select() without requirements assumes the sme code needs SVE and SVE2.
+            return stripes::sme_rung_runs(stripes::cpu_features(), {}) ? 5 : 0;
         case InstructionSet::Baseline:
             break;
         }
         return 0;
     }();
 
-    CHECK(einsums::simd::select<Fn>(ret_baseline, ret_v2, ret_v3, ret_v4, ret_sme)() == expected);
-    CHECK(einsums::simd::select<Fn>(ret_baseline)() == 0);
+    CHECK(stripes::select<Fn>(ret_baseline, ret_v2, ret_v3, ret_v4, ret_sme)() == expected);
+    CHECK(stripes::select<Fn>(ret_baseline)() == 0);
 }

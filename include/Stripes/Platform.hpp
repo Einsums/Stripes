@@ -5,8 +5,7 @@
 
 #pragma once
 
-#include <Einsums/Config/Namespace.hpp>
-
+#include <Stripes/Config.hpp>
 #include <cstddef>
 #include <cstdint>
 
@@ -17,7 +16,7 @@
 // features: Vec<float> is a different register, loadu a different
 // instruction, native_lanes<float> a different number. A program can hold
 // translation units built for several such sets (the per-rung kernels of
-// einsums_add_simd_dispatch_sources, or a user's -march=native TU next to the
+// stripes_add_dispatch_sources, or a user's -march=native TU next to the
 // library's baseline), and if those definitions shared names, the linker
 // would keep one copy of each and hand it to every caller. Nothing would
 // break while every call inlines, which is why it went unseen; an
@@ -27,16 +26,16 @@
 //
 // So the headers declare everything inside an inline namespace named for
 // the features the translation unit was compiled with, isa_<tier>_<ext>...
-// It is transparent to lookup, so einsums::simd::Vec<float> still names it,
+// It is transparent to lookup, so stripes::Vec<float> still names it,
 // but each feature set mangles differently and no two can be merged.
 //
 // The name has to change whenever any definition does, so it encodes every
-// feature macro the headers test. devtools/check_simd_isa_tag.py fails
+// feature macro the headers test. devtools/check_isa_tag.py fails
 // pre-commit when a header tests a macro that is not named between the
 // markers below; add a piece here for it.
 //
-// RuntimeFeatures.hpp, RungLadder.hpp and Options.hpp describe the machine
-// at run time, compile identically everywhere, and stay in einsums::simd.
+// RuntimeFeatures.hpp and RungLadder.hpp describe the machine
+// at run time, compile identically everywhere, and stay in stripes.
 // ---------------------------------------------------------------------------
 
 // BEGIN ISA TAG
@@ -46,149 +45,146 @@
 // FMA3 code generation and its intrinsics, so key MSVC off __AVX2__ (which
 // /arch:AVX512 also defines).
 #if defined(__FMA__) || (defined(_MSC_VER) && !defined(__clang__) && defined(__AVX2__))
-#    define EINSUMS_SIMD_HAVE_FMA 1
+#    define STRIPES_HAVE_FMA 1
 #endif
 
 #if defined(__AVX512F__) && defined(__AVX512VL__)
-#    define EINSUMS_SIMD_ISA_TIER_ isa_avx512
+#    define STRIPES_ISA_TIER_ isa_avx512
 #elif defined(__AVX__)
-#    define EINSUMS_SIMD_ISA_TIER_ isa_avx
+#    define STRIPES_ISA_TIER_ isa_avx
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-#    define EINSUMS_SIMD_ISA_TIER_ isa_sse2
+#    define STRIPES_ISA_TIER_ isa_sse2
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#    define EINSUMS_SIMD_ISA_TIER_ isa_neon
+#    define STRIPES_ISA_TIER_ isa_neon
 #else
-#    define EINSUMS_SIMD_ISA_TIER_ isa_scalar
+#    define STRIPES_ISA_TIER_ isa_scalar
 #endif
 
 // One piece per feature: its suffix when the feature is on, nothing when it is off.
 #if defined(__AVX512F__)
-#    define EINSUMS_SIMD_ISA_P01_ _avx512f
+#    define STRIPES_ISA_P01_ _avx512f
 #else
-#    define EINSUMS_SIMD_ISA_P01_
+#    define STRIPES_ISA_P01_
 #endif
 #if defined(__AVX2__)
-#    define EINSUMS_SIMD_ISA_P02_ _avx2
+#    define STRIPES_ISA_P02_ _avx2
 #else
-#    define EINSUMS_SIMD_ISA_P02_
+#    define STRIPES_ISA_P02_
 #endif
-#if defined(EINSUMS_SIMD_HAVE_FMA)
-#    define EINSUMS_SIMD_ISA_P03_ _fma
+#if defined(STRIPES_HAVE_FMA)
+#    define STRIPES_ISA_P03_ _fma
 #else
-#    define EINSUMS_SIMD_ISA_P03_
+#    define STRIPES_ISA_P03_
 #endif
 #if defined(__SSE3__)
-#    define EINSUMS_SIMD_ISA_P04_ _sse3
+#    define STRIPES_ISA_P04_ _sse3
 #else
-#    define EINSUMS_SIMD_ISA_P04_
+#    define STRIPES_ISA_P04_
 #endif
 #if defined(__SSSE3__)
-#    define EINSUMS_SIMD_ISA_P05_ _ssse3
+#    define STRIPES_ISA_P05_ _ssse3
 #else
-#    define EINSUMS_SIMD_ISA_P05_
+#    define STRIPES_ISA_P05_
 #endif
 #if defined(__SSE4_1__)
-#    define EINSUMS_SIMD_ISA_P06_ _sse41
+#    define STRIPES_ISA_P06_ _sse41
 #else
-#    define EINSUMS_SIMD_ISA_P06_
+#    define STRIPES_ISA_P06_
 #endif
 #if defined(__SSE4_2__)
-#    define EINSUMS_SIMD_ISA_P07_ _sse42
+#    define STRIPES_ISA_P07_ _sse42
 #else
-#    define EINSUMS_SIMD_ISA_P07_
+#    define STRIPES_ISA_P07_
 #endif
 #if defined(__PRFCHW__) || defined(__3dNOW__)
-#    define EINSUMS_SIMD_ISA_P08_ _prfchw
+#    define STRIPES_ISA_P08_ _prfchw
 #else
-#    define EINSUMS_SIMD_ISA_P08_
+#    define STRIPES_ISA_P08_
 #endif
 #if defined(__AVX512DQ__)
-#    define EINSUMS_SIMD_ISA_P09_ _dq
+#    define STRIPES_ISA_P09_ _dq
 #else
-#    define EINSUMS_SIMD_ISA_P09_
+#    define STRIPES_ISA_P09_
 #endif
 #if defined(__AVX512FP16__)
-#    define EINSUMS_SIMD_ISA_P10_ _fp16
+#    define STRIPES_ISA_P10_ _fp16
 #else
-#    define EINSUMS_SIMD_ISA_P10_
+#    define STRIPES_ISA_P10_
 #endif
 #if defined(__AVX512BF16__)
-#    define EINSUMS_SIMD_ISA_P11_ _bf16
+#    define STRIPES_ISA_P11_ _bf16
 #else
-#    define EINSUMS_SIMD_ISA_P11_
+#    define STRIPES_ISA_P11_
 #endif
 #if defined(__AVX512VNNI__)
-#    define EINSUMS_SIMD_ISA_P12_ _vnni
+#    define STRIPES_ISA_P12_ _vnni
 #else
-#    define EINSUMS_SIMD_ISA_P12_
+#    define STRIPES_ISA_P12_
 #endif
 #if defined(__AVXVNNI__)
-#    define EINSUMS_SIMD_ISA_P13_ _avxvnni
+#    define STRIPES_ISA_P13_ _avxvnni
 #else
-#    define EINSUMS_SIMD_ISA_P13_
+#    define STRIPES_ISA_P13_
 #endif
 #if defined(__AVX10_1__)
-#    define EINSUMS_SIMD_ISA_P14_ _avx10v1
+#    define STRIPES_ISA_P14_ _avx10v1
 #else
-#    define EINSUMS_SIMD_ISA_P14_
+#    define STRIPES_ISA_P14_
 #endif
 #if defined(__AVX10_2__)
-#    define EINSUMS_SIMD_ISA_P15_ _avx10v2
+#    define STRIPES_ISA_P15_ _avx10v2
 #else
-#    define EINSUMS_SIMD_ISA_P15_
+#    define STRIPES_ISA_P15_
 #endif
 #if defined(__AVX10_1_256__) || defined(__AVX10_2_256__)
-#    define EINSUMS_SIMD_ISA_P16_ _avx10w256
+#    define STRIPES_ISA_P16_ _avx10w256
 #else
-#    define EINSUMS_SIMD_ISA_P16_
+#    define STRIPES_ISA_P16_
 #endif
 #if defined(__AVX10_1_512__) || defined(__AVX10_2_512__)
-#    define EINSUMS_SIMD_ISA_P17_ _avx10w512
+#    define STRIPES_ISA_P17_ _avx10w512
 #else
-#    define EINSUMS_SIMD_ISA_P17_
+#    define STRIPES_ISA_P17_
 #endif
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-#    define EINSUMS_SIMD_ISA_P18_ _neonfp16
+#    define STRIPES_ISA_P18_ _neonfp16
 #else
-#    define EINSUMS_SIMD_ISA_P18_
+#    define STRIPES_ISA_P18_
 #endif
 #if defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
-#    define EINSUMS_SIMD_ISA_P19_ _neonbf16
+#    define STRIPES_ISA_P19_ _neonbf16
 #else
-#    define EINSUMS_SIMD_ISA_P19_
+#    define STRIPES_ISA_P19_
 #endif
 #if defined(__ARM_FEATURE_DOTPROD)
-#    define EINSUMS_SIMD_ISA_P20_ _dotprod
+#    define STRIPES_ISA_P20_ _dotprod
 #else
-#    define EINSUMS_SIMD_ISA_P20_
+#    define STRIPES_ISA_P20_
 #endif
 #if defined(__ARM_FEATURE_MATMUL_INT8)
-#    define EINSUMS_SIMD_ISA_P21_ _i8mm
+#    define STRIPES_ISA_P21_ _i8mm
 #else
-#    define EINSUMS_SIMD_ISA_P21_
+#    define STRIPES_ISA_P21_
 #endif
 // END ISA TAG
 
-#define EINSUMS_SIMD_ISA_PASTE_(t, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20,     \
-                                p21)                                                                                                       \
+#define STRIPES_ISA_PASTE_(t, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21)     \
     t##p01##p02##p03##p04##p05##p06##p07##p08##p09##p10##p11##p12##p13##p14##p15##p16##p17##p18##p19##p20##p21
-#define EINSUMS_SIMD_ISA_EXPAND_(...) EINSUMS_SIMD_ISA_PASTE_(__VA_ARGS__)
+#define STRIPES_ISA_EXPAND_(...) STRIPES_ISA_PASTE_(__VA_ARGS__)
 
 /// The inline namespace for this translation unit's features, such as isa_avx_avx2_fma_sse3_ssse3_sse41_sse42.
-#define EINSUMS_SIMD_ISA_NS                                                                                                                \
-    EINSUMS_SIMD_ISA_EXPAND_(EINSUMS_SIMD_ISA_TIER_, EINSUMS_SIMD_ISA_P01_, EINSUMS_SIMD_ISA_P02_, EINSUMS_SIMD_ISA_P03_,                  \
-                             EINSUMS_SIMD_ISA_P04_, EINSUMS_SIMD_ISA_P05_, EINSUMS_SIMD_ISA_P06_, EINSUMS_SIMD_ISA_P07_,                   \
-                             EINSUMS_SIMD_ISA_P08_, EINSUMS_SIMD_ISA_P09_, EINSUMS_SIMD_ISA_P10_, EINSUMS_SIMD_ISA_P11_,                   \
-                             EINSUMS_SIMD_ISA_P12_, EINSUMS_SIMD_ISA_P13_, EINSUMS_SIMD_ISA_P14_, EINSUMS_SIMD_ISA_P15_,                   \
-                             EINSUMS_SIMD_ISA_P16_, EINSUMS_SIMD_ISA_P17_, EINSUMS_SIMD_ISA_P18_, EINSUMS_SIMD_ISA_P19_,                   \
-                             EINSUMS_SIMD_ISA_P20_, EINSUMS_SIMD_ISA_P21_)
+#define STRIPES_ISA_NS                                                                                                                     \
+    STRIPES_ISA_EXPAND_(STRIPES_ISA_TIER_, STRIPES_ISA_P01_, STRIPES_ISA_P02_, STRIPES_ISA_P03_, STRIPES_ISA_P04_, STRIPES_ISA_P05_,       \
+                        STRIPES_ISA_P06_, STRIPES_ISA_P07_, STRIPES_ISA_P08_, STRIPES_ISA_P09_, STRIPES_ISA_P10_, STRIPES_ISA_P11_,        \
+                        STRIPES_ISA_P12_, STRIPES_ISA_P13_, STRIPES_ISA_P14_, STRIPES_ISA_P15_, STRIPES_ISA_P16_, STRIPES_ISA_P17_,        \
+                        STRIPES_ISA_P18_, STRIPES_ISA_P19_, STRIPES_ISA_P20_, STRIPES_ISA_P21_)
 
-/// Open and close the instruction-set namespace, just inside EINSUMS_NAMESPACE_BEGIN(simd).
-#define EINSUMS_SIMD_ISA_NAMESPACE_BEGIN() inline namespace EINSUMS_SIMD_ISA_NS {
-#define EINSUMS_SIMD_ISA_NAMESPACE_END()   }
+/// Open and close the instruction-set namespace, just inside STRIPES_NAMESPACE_BEGIN().
+#define STRIPES_ISA_NAMESPACE_BEGIN() inline namespace STRIPES_ISA_NS {
+#define STRIPES_ISA_NAMESPACE_END()   }
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ---------------------------------------------------------------------------
 // Feature detection: constexpr booleans for each ISA extension.
@@ -240,7 +236,7 @@ inline constexpr bool has_avx2 =
 #endif
 
 inline constexpr bool has_fma =
-#if defined(EINSUMS_SIMD_HAVE_FMA)
+#if defined(STRIPES_HAVE_FMA)
     true;
 #else
     false;
@@ -400,5 +396,5 @@ inline constexpr size_t native_alignment = (native_bytes > 0) ? static_cast<size
 template <typename T>
 inline constexpr int native_lanes = (native_bits > 0) ? (native_bits / (8 * static_cast<int>(sizeof(T)))) : 1;
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

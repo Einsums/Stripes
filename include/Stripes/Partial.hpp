@@ -5,17 +5,15 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Vec.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ===========================================================================
 // Masked and partial loads and stores.
@@ -47,16 +45,16 @@ template <typename T>
 inline constexpr bool native_partial = native_masked_memory<T>;
 
 template <typename T>
-EINSUMS_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m);
+STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m);
 template <typename T>
-EINSUMS_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m);
+STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m);
 
 namespace detail {
 /// The emulated masked load: p[i] for each lane set in bits, zero elsewhere, through a stack buffer.
 /// SSE and NEON overload it with forms that assemble the lanes in registers (below); the scalar
 /// build, and rungs with a native masked load, which never call it, keep this one.
 template <typename T>
-EINSUMS_FORCEINLINE Vec<T> load_lanes(T const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<T> load_lanes(T const *p, uint64_t bits) {
     constexpr int               L      = Vec<T>::lanes;
     alignas(native_alignment) T buf[L] = {};
     for (int i = 0; i < L; ++i) {
@@ -69,7 +67,7 @@ EINSUMS_FORCEINLINE Vec<T> load_lanes(T const *p, uint64_t bits) {
 /// The masked store through a stack buffer, touching only the active lanes. The buffer costs a
 /// store load round trip here too, but a vector store forwards to the narrower loads inside it.
 template <typename T>
-EINSUMS_FORCEINLINE void storeu_masked_lanes(T *p, Vec<T> v, Mask<T> m) {
+STRIPES_FORCEINLINE void storeu_masked_lanes(T *p, Vec<T> v, Mask<T> m) {
     constexpr int               L = Vec<T>::lanes;
     alignas(native_alignment) T buf[L];
     storea(buf, v);
@@ -83,80 +81,80 @@ EINSUMS_FORCEINLINE void storeu_masked_lanes(T *p, Vec<T> v, Mask<T> m) {
 } // namespace detail
 
 #if defined(__AVX512F__) && defined(__AVX512VL__)
-#    define EINSUMS_SIMD_AVX512_MASKED(T, sfx)                                                                                             \
+#    define STRIPES_AVX512_MASKED(T, sfx)                                                                                                  \
         template <>                                                                                                                        \
         inline constexpr bool native_masked_memory<T> = true;                                                                              \
         template <>                                                                                                                        \
-        EINSUMS_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                          \
+        STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                          \
             return _mm512_maskz_loadu_##sfx(m.reg, p);                                                                                     \
         }                                                                                                                                  \
         template <>                                                                                                                        \
-        EINSUMS_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                       \
+        STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                       \
             _mm512_mask_storeu_##sfx(p, m.reg, v.reg);                                                                                     \
         }
-EINSUMS_SIMD_AVX512_MASKED(float, ps)
-EINSUMS_SIMD_AVX512_MASKED(double, pd)
-EINSUMS_SIMD_AVX512_MASKED(int32_t, epi32)
-EINSUMS_SIMD_AVX512_MASKED(uint32_t, epi32)
-EINSUMS_SIMD_AVX512_MASKED(int64_t, epi64)
-EINSUMS_SIMD_AVX512_MASKED(uint64_t, epi64)
-#    undef EINSUMS_SIMD_AVX512_MASKED
+STRIPES_AVX512_MASKED(float, ps)
+STRIPES_AVX512_MASKED(double, pd)
+STRIPES_AVX512_MASKED(int32_t, epi32)
+STRIPES_AVX512_MASKED(uint32_t, epi32)
+STRIPES_AVX512_MASKED(int64_t, epi64)
+STRIPES_AVX512_MASKED(uint64_t, epi64)
+#    undef STRIPES_AVX512_MASKED
 #elif defined(__AVX__)
 template <>
 inline constexpr bool native_masked_memory<float> = true;
 template <>
 inline constexpr bool native_masked_memory<double> = true;
 template <>
-EINSUMS_FORCEINLINE Vec<float> loadu(float const *p, Mask<float> m) {
+STRIPES_FORCEINLINE Vec<float> loadu(float const *p, Mask<float> m) {
     return _mm256_maskload_ps(p, _mm256_castps_si256(m.reg));
 }
 template <>
-EINSUMS_FORCEINLINE Vec<double> loadu(double const *p, Mask<double> m) {
+STRIPES_FORCEINLINE Vec<double> loadu(double const *p, Mask<double> m) {
     return _mm256_maskload_pd(p, _mm256_castpd_si256(m.reg));
 }
 template <>
-EINSUMS_FORCEINLINE void storeu(float *p, Vec<float> v, Mask<float> m) {
+STRIPES_FORCEINLINE void storeu(float *p, Vec<float> v, Mask<float> m) {
     _mm256_maskstore_ps(p, _mm256_castps_si256(m.reg), v.reg);
 }
 template <>
-EINSUMS_FORCEINLINE void storeu(double *p, Vec<double> v, Mask<double> m) {
+STRIPES_FORCEINLINE void storeu(double *p, Vec<double> v, Mask<double> m) {
     _mm256_maskstore_pd(p, _mm256_castpd_si256(m.reg), v.reg);
 }
 #    if defined(__AVX2__)
-#        define EINSUMS_SIMD_AVX_MASKED_INT(T, W, P)                                                                                       \
+#        define STRIPES_AVX_MASKED_INT(T, W, P)                                                                                            \
             template <>                                                                                                                    \
             inline constexpr bool native_masked_memory<T> = true;                                                                          \
             template <>                                                                                                                    \
-            EINSUMS_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                      \
+            STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                      \
                 return _mm256_maskload_epi##W(reinterpret_cast<P const *>(p), m.reg);                                                      \
             }                                                                                                                              \
             template <>                                                                                                                    \
-            EINSUMS_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                   \
+            STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                   \
                 _mm256_maskstore_epi##W(reinterpret_cast<P *>(p), m.reg, v.reg);                                                           \
             }
-EINSUMS_SIMD_AVX_MASKED_INT(int32_t, 32, int)
-EINSUMS_SIMD_AVX_MASKED_INT(uint32_t, 32, int)
-EINSUMS_SIMD_AVX_MASKED_INT(int64_t, 64, long long)
-EINSUMS_SIMD_AVX_MASKED_INT(uint64_t, 64, long long)
-#        undef EINSUMS_SIMD_AVX_MASKED_INT
+STRIPES_AVX_MASKED_INT(int32_t, 32, int)
+STRIPES_AVX_MASKED_INT(uint32_t, 32, int)
+STRIPES_AVX_MASKED_INT(int64_t, 64, long long)
+STRIPES_AVX_MASKED_INT(uint64_t, 64, long long)
+#        undef STRIPES_AVX_MASKED_INT
 #    else
 // AVX without AVX2: the integers through VMASKMOV's float form, which moves the bits unchanged.
-#        define EINSUMS_SIMD_AVX_MASKED_INT(T, sfx, F)                                                                                     \
+#        define STRIPES_AVX_MASKED_INT(T, sfx, F)                                                                                          \
             template <>                                                                                                                    \
             inline constexpr bool native_masked_memory<T> = true;                                                                          \
             template <>                                                                                                                    \
-            EINSUMS_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                      \
+            STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                      \
                 return _mm256_cast##sfx##_si256(_mm256_maskload_##sfx(reinterpret_cast<F const *>(p), m.reg));                             \
             }                                                                                                                              \
             template <>                                                                                                                    \
-            EINSUMS_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                   \
+            STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                   \
                 _mm256_maskstore_##sfx(reinterpret_cast<F *>(p), m.reg, _mm256_castsi256_##sfx(v.reg));                                    \
             }
-EINSUMS_SIMD_AVX_MASKED_INT(int32_t, ps, float)
-EINSUMS_SIMD_AVX_MASKED_INT(uint32_t, ps, float)
-EINSUMS_SIMD_AVX_MASKED_INT(int64_t, pd, double)
-EINSUMS_SIMD_AVX_MASKED_INT(uint64_t, pd, double)
-#        undef EINSUMS_SIMD_AVX_MASKED_INT
+STRIPES_AVX_MASKED_INT(int32_t, ps, float)
+STRIPES_AVX_MASKED_INT(uint32_t, ps, float)
+STRIPES_AVX_MASKED_INT(int64_t, pd, double)
+STRIPES_AVX_MASKED_INT(uint64_t, pd, double)
+#        undef STRIPES_AVX_MASKED_INT
 #    endif
 #else
 // No masked load: the active lanes are read one at a time and assembled in registers, never through
@@ -167,7 +165,7 @@ namespace detail {
 #    if defined(__SSE2__) || (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
 /// Four 32-bit lanes; the prefixes a partial load asks for are one or two loads each. The integer
 /// loads carry no type, so float data is read without aliasing it as an integer.
-EINSUMS_FORCEINLINE __m128i load_lanes_32x4(void const *p, uint64_t bits) {
+STRIPES_FORCEINLINE __m128i load_lanes_32x4(void const *p, uint64_t bits) {
     auto const *q = static_cast<char const *>(p);
     switch (bits & 15u) {
     case 0:
@@ -190,7 +188,7 @@ EINSUMS_FORCEINLINE __m128i load_lanes_32x4(void const *p, uint64_t bits) {
     }
 }
 /// Two 64-bit lanes.
-EINSUMS_FORCEINLINE __m128i load_lanes_64x2(void const *p, uint64_t bits) {
+STRIPES_FORCEINLINE __m128i load_lanes_64x2(void const *p, uint64_t bits) {
     auto const *q = static_cast<char const *>(p);
     switch (bits & 3u) {
     case 0:
@@ -203,28 +201,28 @@ EINSUMS_FORCEINLINE __m128i load_lanes_64x2(void const *p, uint64_t bits) {
         return _mm_loadu_si128(reinterpret_cast<__m128i const *>(q));
     }
 }
-EINSUMS_FORCEINLINE Vec<float> load_lanes(float const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<float> load_lanes(float const *p, uint64_t bits) {
     return _mm_castsi128_ps(load_lanes_32x4(p, bits));
 }
-EINSUMS_FORCEINLINE Vec<double> load_lanes(double const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<double> load_lanes(double const *p, uint64_t bits) {
     return _mm_castsi128_pd(load_lanes_64x2(p, bits));
 }
-EINSUMS_FORCEINLINE Vec<int32_t> load_lanes(int32_t const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<int32_t> load_lanes(int32_t const *p, uint64_t bits) {
     return load_lanes_32x4(p, bits);
 }
-EINSUMS_FORCEINLINE Vec<uint32_t> load_lanes(uint32_t const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<uint32_t> load_lanes(uint32_t const *p, uint64_t bits) {
     return load_lanes_32x4(p, bits);
 }
-EINSUMS_FORCEINLINE Vec<int64_t> load_lanes(int64_t const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<int64_t> load_lanes(int64_t const *p, uint64_t bits) {
     return load_lanes_64x2(p, bits);
 }
-EINSUMS_FORCEINLINE Vec<uint64_t> load_lanes(uint64_t const *p, uint64_t bits) {
+STRIPES_FORCEINLINE Vec<uint64_t> load_lanes(uint64_t const *p, uint64_t bits) {
     return load_lanes_64x2(p, bits);
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 /// Each active lane loaded into a zeroed register with LD1 (single structure, one lane).
-#        define EINSUMS_SIMD_NEON_LOAD_LANES(T, sfx)                                                                                       \
-            EINSUMS_FORCEINLINE Vec<T> load_lanes(T const *p, uint64_t bits) {                                                             \
+#        define STRIPES_NEON_LOAD_LANES(T, sfx)                                                                                            \
+            STRIPES_FORCEINLINE Vec<T> load_lanes(T const *p, uint64_t bits) {                                                             \
                 auto r = vdupq_n_##sfx(0);                                                                                                 \
                 if (bits & 1u) {                                                                                                           \
                     r = vld1q_lane_##sfx(p, r, 0);                                                                                         \
@@ -242,37 +240,37 @@ EINSUMS_FORCEINLINE Vec<uint64_t> load_lanes(uint64_t const *p, uint64_t bits) {
                 }                                                                                                                          \
                 return r;                                                                                                                  \
             }
-EINSUMS_SIMD_NEON_LOAD_LANES(float, f32)
-EINSUMS_SIMD_NEON_LOAD_LANES(double, f64)
-EINSUMS_SIMD_NEON_LOAD_LANES(int32_t, s32)
-EINSUMS_SIMD_NEON_LOAD_LANES(uint32_t, u32)
-EINSUMS_SIMD_NEON_LOAD_LANES(int64_t, s64)
-EINSUMS_SIMD_NEON_LOAD_LANES(uint64_t, u64)
-#        undef EINSUMS_SIMD_NEON_LOAD_LANES
+STRIPES_NEON_LOAD_LANES(float, f32)
+STRIPES_NEON_LOAD_LANES(double, f64)
+STRIPES_NEON_LOAD_LANES(int32_t, s32)
+STRIPES_NEON_LOAD_LANES(uint32_t, u32)
+STRIPES_NEON_LOAD_LANES(int64_t, s64)
+STRIPES_NEON_LOAD_LANES(uint64_t, u64)
+#        undef STRIPES_NEON_LOAD_LANES
 #    endif
 } // namespace detail
 
-#    define EINSUMS_SIMD_EMULATED_MASKED(T)                                                                                                \
+#    define STRIPES_EMULATED_MASKED(T)                                                                                                     \
         template <>                                                                                                                        \
-        EINSUMS_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                          \
+        STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                          \
             return detail::load_lanes(p, to_bits(m));                                                                                      \
         }                                                                                                                                  \
         template <>                                                                                                                        \
-        EINSUMS_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                       \
+        STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                       \
             detail::storeu_masked_lanes(p, v, m);                                                                                          \
         }
-EINSUMS_SIMD_EMULATED_MASKED(float)
-EINSUMS_SIMD_EMULATED_MASKED(double)
-EINSUMS_SIMD_EMULATED_MASKED(int32_t)
-EINSUMS_SIMD_EMULATED_MASKED(uint32_t)
-EINSUMS_SIMD_EMULATED_MASKED(int64_t)
-EINSUMS_SIMD_EMULATED_MASKED(uint64_t)
-#    undef EINSUMS_SIMD_EMULATED_MASKED
+STRIPES_EMULATED_MASKED(float)
+STRIPES_EMULATED_MASKED(double)
+STRIPES_EMULATED_MASKED(int32_t)
+STRIPES_EMULATED_MASKED(uint32_t)
+STRIPES_EMULATED_MASKED(int64_t)
+STRIPES_EMULATED_MASKED(uint64_t)
+#    undef STRIPES_EMULATED_MASKED
 #endif
 
 /// The first min(n, lanes) elements at p, zero in the other lanes.
 template <typename T>
-EINSUMS_FORCEINLINE Vec<T> loadu_partial(T const *p, std::size_t n) {
+STRIPES_FORCEINLINE Vec<T> loadu_partial(T const *p, std::size_t n) {
     constexpr int L = Vec<T>::lanes;
     if (n >= static_cast<std::size_t>(L)) {
         return loadu<T>(p);
@@ -291,7 +289,7 @@ EINSUMS_FORCEINLINE Vec<T> loadu_partial(T const *p, std::size_t n) {
 
 /// Write the first min(n, lanes) lanes of v to p.
 template <typename T>
-EINSUMS_FORCEINLINE void storeu_partial(T *p, Vec<T> v, std::size_t n) {
+STRIPES_FORCEINLINE void storeu_partial(T *p, Vec<T> v, std::size_t n) {
     constexpr int L = Vec<T>::lanes;
     if (n >= static_cast<std::size_t>(L)) {
         storeu<T>(p, v);
@@ -306,5 +304,5 @@ EINSUMS_FORCEINLINE void storeu_partial(T *p, Vec<T> v, std::size_t n) {
     }
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

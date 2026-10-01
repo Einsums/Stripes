@@ -13,21 +13,19 @@
 ///   - Use gather/scatter for non-contiguous access
 ///   - Work with complex numbers via CVec<T>
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/ComplexVec.hpp>
-#include <Einsums/SIMD/Gather.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Shuffle.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/ComplexVec.hpp>
+#include <Stripes/Gather.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Shuffle.hpp>
+#include <Stripes/Vec.hpp>
 #include <complex>
 #include <iomanip>
 #include <iostream>
 
-using namespace einsums::simd;
+using namespace stripes;
 
-int einsums_main() {
+int main() {
     // ── 1. Platform info ────────────────────────────────────────────────────
     std::cout << "SIMD Platform:\n";
     std::cout << "  native_bits:    " << native_bits << "\n";
@@ -120,8 +118,4 @@ int einsums_main() {
 
     std::cout << "Done.\n";
     return 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

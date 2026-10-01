@@ -8,7 +8,7 @@
 ///
 /// Vec<T> has + - * / and unary -, which call add, sub, mul, div and neg; the two spellings compile
 /// to the same instructions and give the same bits. A codebase that wants every vector operation
-/// spelled out can define EINSUMS_SIMD_NO_OPERATORS before including the headers, and the
+/// spelled out can define STRIPES_NO_OPERATORS before including the headers, and the
 /// operators disappear.
 ///
 /// One thing operators cannot express is a fused multiply-add. a * b + c rounds the product and
@@ -22,15 +22,13 @@
 /// must not depend on the compiler's choice should call fmadd where it wants fusion and build with
 /// contraction off.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-
+#include <Stripes/Operations.hpp>
 #include <cmath>
 #include <iostream>
 
-using namespace einsums::simd;
+using namespace stripes;
 
-#if defined(EINSUMS_SIMD_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64)
+#if defined(STRIPES_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64)
 constexpr bool fused = true;
 #else
 constexpr bool fused = false;
@@ -50,7 +48,7 @@ Vec<double> with_functions(Vec<double> x, Vec<double> y) {
 
 } // namespace
 
-int einsums_main() {
+int main() {
     constexpr int L = lanes<double>;
     double        a[L], b[L], ops[L], fns[L], naive[L], err[L];
     for (int i = 0; i < L; ++i) {
@@ -76,8 +74,4 @@ int einsums_main() {
     }
     std::cout << (fused ? "fmadd is fused on this build" : "fmadd is a multiply and an add on this build") << "\n";
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

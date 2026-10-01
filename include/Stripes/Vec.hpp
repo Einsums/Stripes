@@ -5,10 +5,8 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Platform.hpp>
 #include <array>
 #include <cstring>
 #include <type_traits>
@@ -24,8 +22,8 @@
 #    include <arm_neon.h>
 #endif
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ---------------------------------------------------------------------------
 // Half-precision type aliases.
@@ -489,12 +487,12 @@ struct vec_storage<T, N, true> {
 
     vec_storage() = default;
 
-    EINSUMS_FORCEINLINE vec_storage(reg_type r) : reg(r) {}
+    STRIPES_FORCEINLINE vec_storage(reg_type r) : reg(r) {}
 
-    EINSUMS_FORCEINLINE operator reg_type() const { return reg; }
+    STRIPES_FORCEINLINE operator reg_type() const { return reg; }
 
     /// Element access for debugging only. Stores to a temporary buffer, then indexes it.
-    EINSUMS_FORCEINLINE T operator[](int i) const {
+    STRIPES_FORCEINLINE T operator[](int i) const {
         alignas(native_alignment) T buf[N];
         std::memcpy(buf, &reg, sizeof(reg));
         return buf[i];
@@ -511,7 +509,7 @@ struct vec_storage<T, N, false> {
     std::array<Vec<T>, parts> part;
 
     /// Element access for debugging only.
-    EINSUMS_FORCEINLINE T operator[](int i) const { return part[i / VecTraits<T>::lanes][i % VecTraits<T>::lanes]; }
+    STRIPES_FORCEINLINE T operator[](int i) const { return part[i / VecTraits<T>::lanes][i % VecTraits<T>::lanes]; }
 };
 } // namespace detail
 
@@ -519,7 +517,7 @@ template <typename T, int N>
     requires(N > 0 && N % VecTraits<T>::lanes == 0)
 struct Vec : detail::vec_storage<T, N> {
     using detail::vec_storage<T, N>::vec_storage;
-    using value_type = T; ///< The element type, as einsums::simd::scalar_t<Vec<T, N>> reads it.
+    using value_type = T; ///< The element type, as stripes::scalar_t<Vec<T, N>> reads it.
 
     static constexpr int  lanes  = N;
     static constexpr int  bits   = N * static_cast<int>(sizeof(T)) * 8;
@@ -532,5 +530,5 @@ struct Vec : detail::vec_storage<T, N> {
 template <typename T>
 inline constexpr int lanes = Vec<T>::lanes;
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

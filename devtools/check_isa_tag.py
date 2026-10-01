@@ -15,12 +15,12 @@ is to say while it encodes every feature macro a header tests. A header that
 starts testing a new one (a new AVX-512 subset, an SVE macro) without a piece
 for it in the tag silently reopens the hazard for that feature.
 
-So this checks, over the SIMD module's headers:
+So this checks, over the Stripes headers:
   - every compiler-defined macro (``__X__`` or ``_M_X``) that a preprocessor
     condition tests is named between ``// BEGIN ISA TAG`` and
     ``// END ISA TAG`` in Platform.hpp, apart from the compiler and platform
     identities in IDENTITY, which are the same across one link;
-  - every header that opens ``einsums::simd`` also opens the instruction-set
+  - every header that opens ``stripes`` also opens the instruction-set
     namespace, except the run-time headers in RUNTIME, which compile the same
     for every feature set and must not test feature macros at all.
 
@@ -34,21 +34,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-HEADERS = Path("libs/Einsums/SIMD/include/Einsums/SIMD")
+HEADERS = Path("include/Stripes")
 PLATFORM = HEADERS / "Platform.hpp"
 
-# Headers that describe the machine at run time; they stay in einsums::simd.
-RUNTIME = {"RuntimeFeatures.hpp", "RungLadder.hpp", "Options.hpp"}
+# Headers that describe the machine at run time; they stay in stripes.
+RUNTIME = {"RuntimeFeatures.hpp", "RungLadder.hpp"}
 
 # Compiler and platform identities: one link is built by one compiler for one
 # platform, so they never distinguish two translation units in it. __x86_64__
 # separates 64-bit from 32-bit x86, whose objects cannot be linked together.
-IDENTITY = {"__clang__", "__GNUC__", "_MSC_VER", "__APPLE__", "__NVCC__", "__CUDACC__", "__x86_64__"}
+IDENTITY = {"__clang__", "__GNUC__", "_MSC_VER", "__APPLE__", "__CYGWIN__", "__NVCC__", "__CUDACC__", "__x86_64__"}
 
 CONDITION = re.compile(r"^\s*#\s*(?:if|ifdef|ifndef|elif|elifdef|elifndef)\b(.*)$")
 FEATURE = re.compile(r"\b(__[A-Za-z0-9_]+__|_M_[A-Z0-9_]+)\b")
-BEGIN_SIMD = re.compile(r"^EINSUMS_NAMESPACE_BEGIN\(simd\)\s*$", re.M)
-BEGIN_ISA = re.compile(r"^EINSUMS_SIMD_ISA_NAMESPACE_BEGIN\(\)\s*$", re.M)
+BEGIN_SIMD = re.compile(r"^STRIPES_NAMESPACE_BEGIN\(\)\s*$", re.M)
+BEGIN_ISA = re.compile(r"^STRIPES_ISA_NAMESPACE_BEGIN\(\)\s*$", re.M)
 
 
 def tested_features(text: str) -> set[str]:
@@ -85,12 +85,12 @@ def main() -> int:
         for name in sorted(features - named):
             problems.append(f"{rel}: tests {name}, which the instruction-set tag in {PLATFORM} does not name")
         if BEGIN_SIMD.search(text) and not BEGIN_ISA.search(text):
-            problems.append(f"{rel}: opens einsums::simd without EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()")
+            problems.append(f"{rel}: opens stripes without STRIPES_ISA_NAMESPACE_BEGIN()")
 
     if problems:
         print("\n".join(problems))
         print(
-            "\nEvery feature the SIMD headers test must change the instruction-set namespace's name;"
+            "\nEvery feature the Stripes headers test must change the instruction-set namespace's name;"
             f" add a piece for it between the ISA TAG markers in {PLATFORM}."
         )
         return 1

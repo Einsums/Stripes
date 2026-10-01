@@ -1,0 +1,95 @@
+---
+# We'll use defaults from the LLVM style, but with 4 columns indentation.
+BasedOnStyle: LLVM
+IndentWidth: 4
+---
+Language: Cpp
+ColumnLimit: 140
+IncludeBlocks: Regroup
+AlwaysBreakTemplateDeclarations: Yes
+AllowShortFunctionsOnASingleLine: InlineOnly
+AlignConsecutiveMacros: true
+IndentPPDirectives: AfterHash
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+QualifierAlignment: Right
+AttributeMacros:
+  # Apiary binding annotations (<apiary/Annotations.hpp>).
+  # These expand to [[clang::annotate(...)]] and sit in attribute position, so
+  # clang-format must not mistake them for the declaration's type.
+  - APIARY_EXPOSE
+  - APIARY_HIDE
+  - APIARY_RENAME
+  - APIARY_MODULE
+  - APIARY_HOLDER
+  - APIARY_BUFFER_PROTOCOL
+  - APIARY_BUFFER_FROM
+  - APIARY_BUFFER_PROTOCOL_STD
+  - APIARY_ITERATOR_STD
+  - APIARY_INDEX_PROTOCOL_STD
+  - APIARY_IMPLICIT_FROM
+  - APIARY_DYNAMIC_ATTR
+  - APIARY_NOCOPY
+  - APIARY_NOMOVE
+  - APIARY_READONLY
+  - APIARY_EXCEPTION
+  - APIARY_NO_BASES
+  - APIARY_RVP
+  - APIARY_KEEP_ALIVE
+  - APIARY_RELEASE_GIL
+  - APIARY_VARIADIC_FROM
+  - APIARY_INSTANTIATE_MEMBER
+  - APIARY_INSTANTIATE_MEMBER_AS
+  - APIARY_OPERATOR
+  - APIARY_GETTER
+  - APIARY_SETTER
+  - APIARY_DOC
+  - APIARY_INSTANTIATE
+  - APIARY_INSTANTIATE_AS
+  - APIARY_INSTANTIATE_TEMPLATE
+  - APIARY_TEMPLATE_KWARGS
+  - APIARY_INSTANTIATE_BOOLS
+  # Einsums attribute-like macros. EINSUMS_EXPORT in particular appears between
+  # `class` and the class name (e.g. `class EINSUMS_EXPORT APIARY_EXPOSE Foo`),
+  # which clang-format parses as the type unless told otherwise.
+  - EINSUMS_EXPORT
+  - EINSUMS_SYMBOL_EXPORT
+  - EINSUMS_SYMBOL_IMPORT
+  - EINSUMS_SYMBOL_INTERNAL
+  - EINSUMS_FORCEINLINE
+  - EINSUMS_ALWAYS_INLINE
+  - EINSUMS_HOST
+  - EINSUMS_DEVICE
+  - EINSUMS_HOSTDEV
+  - EINSUMS_NO_SANITIZE_ADDRESS
+IncludeCategories:
+  - Regex: '^<Einsums/Config/WarningsPrefix.hpp>'
+    Priority: 100
+  - Regex: '^<catch2/catch_all.hpp>'
+    Priority: 10
+  - Regex: '^<Einsums/Testing.hpp>'
+    Priority: 10
+  - Regex: '^<Einsums/Config.hpp>'
+    Priority: 1
+  - Regex: '^<Einsums/_.*\.hpp>'
+    Priority: 2
+  - Regex: '^<Einsums/.*\.h.*>'
+    Priority: 3
+  - Regex: '^<range/.*>'
+    Priority: 4
+  - Regex: '^<fmt/.*>'
+    Priority: 4
+  - Regex: '^<.*'
+    Priority: 5
+  - Regex: '.*'
+    Priority: 6
+
+# The namespace macros expand to namespace openers/closers, which clang-format
+# cannot see through. Without this it treats a bare macro call as a continuation
+# of the previous line and indents whatever follows - visible in Logging.hpp,
+# where EINSUMS_DETAIL_DECLARE_SPDLOG carries no trailing semicolon.
+StatementMacros:
+  - STRIPES_NAMESPACE_BEGIN
+  - STRIPES_NAMESPACE_END
+  - STRIPES_ISA_NAMESPACE_BEGIN
+  - STRIPES_ISA_NAMESPACE_END

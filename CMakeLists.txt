@@ -3,133 +3,163 @@
 # Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 #----------------------------------------------------------------------------------------------
 
-set(SIMDHeaders
-    Einsums/SIMD/Platform.hpp
-    Einsums/SIMD/Vec.hpp
-    Einsums/SIMD/Operations.hpp
-    Einsums/SIMD/ComplexVec.hpp
-    Einsums/SIMD/Convert.hpp
-    Einsums/SIMD/Shuffle.hpp
-    Einsums/SIMD/Gather.hpp
-    Einsums/SIMD/Options.hpp
-    Einsums/SIMD/Partial.hpp
-    Einsums/SIMD/Prefetch.hpp
-    Einsums/SIMD/Reduce.hpp
-    Einsums/SIMD/RuntimeFeatures.hpp
-    Einsums/SIMD/RungLadder.hpp
+cmake_minimum_required(VERSION 3.24)
+
+project(
+  Stripes
+  VERSION 1.0.0
+  DESCRIPTION "Portable SIMD vectors with runtime instruction-set dispatch"
+  LANGUAGES CXX
 )
 
-set(SIMDSources Options.cpp RuntimeFeatures.cpp)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# ── Architecture-targeting options ───────────────────────────────────────────
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+# ── Options ──────────────────────────────────────────────────────────────────
 #
-# The SIMD module dispatches via compile-time feature macros (`__AVX512F__`,
-# `__ARM_FEATURE_BF16_VECTOR_ARITHMETIC`, etc.). Whether those macros are
-# defined depends entirely on the compiler's target-CPU baseline. Most
-# toolchains default to a conservative baseline that omits newer features —
-# e.g., the conda-forge clang for `arm64-apple-darwin` defaults to roughly
-# the M1 feature set, hiding M3+ BF16 and M4+ I8MM.
-#
-# Two opt-in knobs surface higher-tier hardware to the SIMD module's
-# consumers without polluting the rest of the project:
-#
-#   - `EINSUMS_SIMD_TARGET_CPU=<name>`  — pin to a specific CPU
-#       (`apple-m4`, `znver4`, `sapphirerapids`, …). Highest precedence.
-#       Useful for cross-builds and reproducible binaries.
-#
-#   - `EINSUMS_SIMD_NATIVE_ARCH=ON`     — use the host CPU
-#       (`-mcpu=native` on aarch64, `-march=native` on x86). Lower
-#       precedence; ignored when TARGET_CPU is also set.
-#
-# Both attach the flag to the `Einsums_SIMD` target's INTERFACE compile
-# options so it propagates to every module that lists `Einsums_SIMD` as a
-# dependency (HPTT, TensorAlgebra, future kernels) — but nothing else.
-# Trade-off either knob makes: the resulting binary is no longer portable
-# across older CPUs of the same family. Default is OFF — the module
-# silently runs at whatever ISA tier the toolchain's baseline exposes.
-einsums_option(
-    EINSUMS_WITH_SIMD_DISPATCH BOOL
-    "Compile SIMD kernel TUs once per instruction-set rung (x86-64 baseline/\
-     v2/v3/v4) and pick the best at runtime (see Einsums/SIMD/RuntimeFeatures.hpp). \
-     One portable binary, full speed on newer CPUs. OFF compiles a single TU at \
-     the toolchain baseline, matching pre-dispatch behavior. Automatically \
-     treated as OFF on non-x86 targets and when EINSUMS_SIMD_NATIVE_ARCH or \
-     EINSUMS_SIMD_TARGET_CPU pins the build."
-    ON
-    CATEGORY "Build Targets"
+# Stripes dispatches through compile-time feature macros (`__AVX512F__`,
+# `__ARM_FEATURE_BF16_VECTOR_ARITHMETIC`, ...), so what a translation unit gets
+# depends on its target flags. Kernels compiled through
+# stripes_add_dispatch_sources() get one copy per rung and pick at run time;
+# everything else sees the toolchain baseline unless one of the two pins below
+# raises it. Either pin makes the binary unportable to older CPUs of the same
+# family, and collapses every dispatch ladder to one native copy.
+option(
+  STRIPES_WITH_DISPATCH
+  "Compile dispatched kernels once per instruction-set rung (x86-64 baseline/v2/v3/v4, aarch64 sme) and pick the best at run time. OFF compiles one copy at the toolchain baseline."
+  ON
 )
-einsums_option(
-    EINSUMS_SIMD_NATIVE_ARCH BOOL
-    "Compile SIMD-using TUs with -mcpu=native / -march=native. Unlocks every \
-     SIMD feature the host CPU supports (BF16, I8MM, FP16, AVX-10, etc.) at \
-     the cost of binary portability — the build will not run on older CPUs \
-     of the same family."
-    OFF
-    CATEGORY "Build Targets"
-)
-einsums_option(
-    EINSUMS_SIMD_TARGET_CPU STRING
-    "Pin SIMD-using TUs to a specific CPU model. Examples: \
-     'apple-m4', 'znver4', 'sapphirerapids', 'graviton3'. \
-     Empty (default) defers to EINSUMS_SIMD_NATIVE_ARCH or the toolchain \
-     baseline. Takes precedence over EINSUMS_SIMD_NATIVE_ARCH when both are \
-     set."
+option(STRIPES_NATIVE_ARCH "Compile code using Stripes with -march=native / -mcpu=native" OFF)
+set(STRIPES_TARGET_CPU
     ""
-    CATEGORY "Build Targets"
+    CACHE STRING "Compile code using Stripes for this CPU (apple-m4, znver4, sapphirerapids, ...); overrides STRIPES_NATIVE_ARCH"
+)
+option(STRIPES_SHARED "Build the runtime library shared, so a process holds one dispatch choice however many libraries use it" ON)
+option(STRIPES_WITH_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
+option(STRIPES_WITH_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
+option(STRIPES_WITH_BENCHMARKS "Build the kernel benchmarks" ${PROJECT_IS_TOP_LEVEL})
+
+include(StripesDispatch)
+
+# ── The runtime library ──────────────────────────────────────────────────────
+#
+# Everything but CPU detection and rung selection is header-only.
+if(STRIPES_SHARED)
+  add_library(stripes SHARED src/RuntimeFeatures.cpp)
+else()
+  add_library(stripes STATIC src/RuntimeFeatures.cpp)
+  target_compile_definitions(stripes PUBLIC STRIPES_STATIC)
+endif()
+add_library(Stripes::stripes ALIAS stripes)
+
+target_compile_features(stripes PUBLIC cxx_std_20)
+target_include_directories(
+  stripes PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_definitions(stripes PRIVATE STRIPES_EXPORTS)
+set_target_properties(
+  stripes
+  PROPERTIES CXX_VISIBILITY_PRESET hidden
+             VISIBILITY_INLINES_HIDDEN ON
+             VERSION ${PROJECT_VERSION}
+             SOVERSION ${PROJECT_VERSION_MAJOR}
+             EXPORT_NAME stripes
 )
 
-include(Einsums_AddModule)
-einsums_add_module(
-  Einsums SIMD
-  SOURCES ${SIMDSources}
-  HEADERS ${SIMDHeaders}
-  DEPENDENCIES
-  MODULE_DEPENDENCIES Einsums_Config Einsums_Logging Einsums_Options
-  CMAKE_SUBDIRS examples tests
+# The architecture pin travels with the target to everything that links it, and nothing else.
+# `-mcpu=` is the aarch64 spelling and `-march=` the x86 one; MSVC's /arch: vocabulary is
+# different, so an MSVC build sets it in CMAKE_CXX_FLAGS instead.
+set(_stripes_arch_flag "")
+if(NOT "${STRIPES_TARGET_CPU}" STREQUAL "")
+  set(_stripes_cpu "${STRIPES_TARGET_CPU}")
+elseif(STRIPES_NATIVE_ARCH)
+  set(_stripes_cpu native)
+endif()
+if(DEFINED _stripes_cpu)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
+    set(_stripes_arch_flag "-mcpu=${_stripes_cpu}")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
+    set(_stripes_arch_flag "-march=${_stripes_cpu}")
+  endif()
+endif()
+if(NOT "${_stripes_arch_flag}" STREQUAL "")
+  if(MSVC)
+    message(WARNING "Stripes: ${_stripes_arch_flag} is GCC/Clang syntax and MSVC ignores it; "
+                    "set /arch:AVX512 or similar in CMAKE_CXX_FLAGS instead."
+    )
+  else()
+    target_compile_options(stripes INTERFACE ${_stripes_arch_flag})
+    message(STATUS "Stripes: applying ${_stripes_arch_flag} to everything that links Stripes::stripes")
+  endif()
+endif()
+
+# The launcher the rung tests run under (stripes_add_rung_tests): installed, so a project testing
+# its own dispatched kernels can use it too.
+# It compiles the runtime in rather than linking the library, so an installed copy runs without
+# finding libstripes (no RPATH, no DLL search path).
+add_executable(stripes_rung_guard tests/rung_guard/stripes_rung_guard.cpp src/RuntimeFeatures.cpp)
+target_include_directories(stripes_rung_guard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(stripes_rung_guard PRIVATE cxx_std_20)
+target_compile_definitions(stripes_rung_guard PRIVATE STRIPES_STATIC)
+set_target_properties(stripes_rung_guard PROPERTIES EXPORT_NAME rung_guard)
+add_executable(Stripes::rung_guard ALIAS stripes_rung_guard)
+
+# ── Install ──────────────────────────────────────────────────────────────────
+install(
+  TARGETS stripes stripes_rung_guard
+  EXPORT StripesTargets
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+set(_stripes_cmake_dir ${CMAKE_INSTALL_LIBDIR}/cmake/Stripes)
+install(
+  EXPORT StripesTargets
+  NAMESPACE Stripes::
+  DESTINATION ${_stripes_cmake_dir}
+)
+configure_package_config_file(
+  cmake/StripesConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/StripesConfig.cmake INSTALL_DESTINATION ${_stripes_cmake_dir}
+)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/StripesConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/StripesConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/StripesConfigVersion.cmake
+              cmake/StripesDispatch.cmake cmake/StripesCheckRungObjects.cmake DESTINATION ${_stripes_cmake_dir}
 )
 
-# The sme rung's runtime gate has to require whatever its flags enable (see
-# einsums_simd_rung_enables); RuntimeFeatures.cpp reads the answer from these.
-include(Einsums_AddSIMDDispatch)
-einsums_simd_rung_enables(sme _simd_sme_sve _simd_sme_sve2)
-if(_simd_sme_sve OR _simd_sme_sve2)
-  message(STATUS "Einsums_SIMD: the sme rung's flags enable non-streaming SVE on this compiler; "
-                 "the sme rung will also require SVE at run time")
-endif()
-target_compile_definitions(
-  Einsums_SIMD PRIVATE EINSUMS_SIMD_SME_RUNG_ENABLES_SVE=$<BOOL:${_simd_sme_sve}>
-                       EINSUMS_SIMD_SME_RUNG_ENABLES_SVE2=$<BOOL:${_simd_sme_sve2}>
+# ── Tests, examples, benchmarks ──────────────────────────────────────────────
+if(STRIPES_WITH_TESTS
+   OR STRIPES_WITH_BENCHMARKS
+   OR STRIPES_WITH_EXAMPLES
 )
-
-# Resolve precedence and emit the right flag for the host architecture.
-# `-mcpu=` is the aarch64 spelling; `-march=` is the x86 spelling. MSVC
-# uses `/arch:` with a different vocabulary entirely (AVX, AVX2, AVX512)
-# and isn't covered here — Einsums on Windows users would have to edit
-# CMAKE_CXX_FLAGS directly. Apply via INTERFACE so the flag travels with
-# the target, not via add_compile_options which would leak to the entire
-# build.
-set(_simd_arch_flag "")
-if(NOT "${EINSUMS_SIMD_TARGET_CPU}" STREQUAL "")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
-        set(_simd_arch_flag "-mcpu=${EINSUMS_SIMD_TARGET_CPU}")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
-        set(_simd_arch_flag "-march=${EINSUMS_SIMD_TARGET_CPU}")
-    endif()
-elseif(EINSUMS_SIMD_NATIVE_ARCH)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
-        set(_simd_arch_flag "-mcpu=native")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
-        set(_simd_arch_flag "-march=native")
-    endif()
+  enable_testing()
 endif()
-if(NOT "${_simd_arch_flag}" STREQUAL "")
-    if(MSVC)
-        message(WARNING
-            "Einsums_SIMD: ${_simd_arch_flag} is GCC/Clang syntax — MSVC ignores it. "
-            "Use /arch:AVX512 or similar in CMAKE_CXX_FLAGS instead.")
-    else()
-        target_compile_options(Einsums_SIMD INTERFACE ${_simd_arch_flag})
-        message(STATUS "Einsums_SIMD: applying ${_simd_arch_flag} to the SIMD INTERFACE")
-    endif()
+if(STRIPES_WITH_TESTS OR STRIPES_WITH_BENCHMARKS)
+  find_package(Catch2 3 QUIET)
+  if(NOT Catch2_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+      Catch2
+      GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+      GIT_TAG v3.8.1
+      GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(Catch2)
+  endif()
 endif()
-unset(_simd_arch_flag)
+if(STRIPES_WITH_TESTS)
+  add_subdirectory(tests/unit)
+endif()
+if(STRIPES_WITH_BENCHMARKS)
+  add_subdirectory(tests/performance)
+endif()
+if(STRIPES_WITH_EXAMPLES)
+  add_subdirectory(examples)
+endif()

@@ -6,15 +6,14 @@
 // Horizontal reductions. The data are small integers, so every partial sum is exact and the
 // result does not depend on the order a backend combines lanes in.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Reduce.hpp>
 #include <algorithm>
 #include <cstdint>
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("reduce_add, reduce_min and reduce_max over every lane", "[simd][reduce]", float, double, int32_t) {
     constexpr int L = Vec<TestType>::lanes;

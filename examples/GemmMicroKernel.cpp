@@ -19,15 +19,13 @@
 ///
 /// All three matrices are column-major. Edges that do not fill a whole block use a scalar loop.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-
+#include <Stripes/Operations.hpp>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -79,7 +77,7 @@ void gemm(std::size_t M, std::size_t N, std::size_t K, double const *A, double c
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const   M = 37, N = 19, K = 53;
     std::vector<double> A(M * K), B(K * N), C(M * N, 1.0), expect(M * N, 1.0);
     for (std::size_t i = 0; i < A.size(); ++i) {
@@ -105,8 +103,4 @@ int einsums_main() {
     std::cout << M << " x " << N << " x " << K << " GEMM with a " << MR << " x " << NR << " register block; largest error " << worst
               << "\n";
     return worst < 1e-12 ? 0 : 1;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

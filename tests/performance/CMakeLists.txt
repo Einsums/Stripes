@@ -5,13 +5,16 @@
 
 # BenchmarkKernels times the SIMD kernels on every dispatch rung the machine supports in one run:
 # the kernels (BenchmarkKernelsImpl.cpp) are compiled once per rung, the driver once.
-include(Einsums_AddSIMDDispatch)
-einsums_add_simd_dispatch_sources(SIMDBenchmarkRungs IMPL BenchmarkKernelsImpl.cpp RUNGS baseline v2 v3 v4)
+include(StripesDispatch)
+stripes_add_dispatch_sources(StripesBenchmarkRungs IMPL BenchmarkKernelsImpl.cpp RUNGS baseline v2 v3 v4)
 
-einsums_add_executable(
-  BenchmarkKernels_test INTERNAL_FLAGS
-  SOURCES BenchmarkKernels.cpp BenchmarkKernels.hpp ${SIMDBenchmarkRungs}
-  NOINSTALL
-)
-target_compile_definitions(BenchmarkKernels_test PRIVATE ${SIMDBenchmarkRungs_DEFINITIONS})
-einsums_add_performance_test("Modules.SIMD" BenchmarkKernels)
+# The per-rung kernels as an object library, so the rung-objects check can read their symbols.
+add_library(BenchmarkKernelsRungs OBJECT ${StripesBenchmarkRungs})
+target_link_libraries(BenchmarkKernelsRungs PRIVATE Stripes::stripes)
+stripes_add_rung_objects_test(NAME unit.BenchmarkKernelsRungObjects TARGET BenchmarkKernelsRungs)
+
+# Timings print to stdout; run it by hand, pinned to one core on an idle machine:
+#   taskset -c 2 ./BenchmarkKernels
+add_executable(BenchmarkKernels BenchmarkKernels.cpp $<TARGET_OBJECTS:BenchmarkKernelsRungs>)
+target_link_libraries(BenchmarkKernels PRIVATE Stripes::stripes Catch2::Catch2WithMain)
+target_compile_definitions(BenchmarkKernels PRIVATE ${StripesBenchmarkRungs_DEFINITIONS})

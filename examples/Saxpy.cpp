@@ -12,16 +12,14 @@
 /// tail, works too; the partial form keeps one code path and one rounding behaviour for every
 /// element.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -42,7 +40,7 @@ void saxpy(std::size_t n, float a, float const *x, float *y) {
 
 } // namespace
 
-int einsums_main() {
+int main() {
     int failures = 0;
     // Lengths below, at and just past multiples of every lane count.
     for (std::size_t n : {0, 1, 3, 4, 7, 8, 15, 16, 17, 31, 33, 1000, 1023}) {
@@ -63,8 +61,4 @@ int einsums_main() {
     }
     std::cout << "saxpy over " << lanes<float> << "-lane Vecs with a partial tail: " << (failures ? "FAILED" : "ok") << "\n";
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

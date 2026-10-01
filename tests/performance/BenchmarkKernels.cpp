@@ -18,12 +18,11 @@
 
 #include "BenchmarkKernels.hpp"
 
-#include <Einsums/Performance.hpp>
-#include <Einsums/Profile/Profile.hpp>
-#include <Einsums/SIMD/RungLadder.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
-
+#include <Stripes/RungLadder.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
 #include <algorithm>
+#include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -34,10 +33,7 @@
 #include <utility>
 #include <vector>
 
-#include <Einsums/Testing.hpp>
-
-using namespace einsums::performance;
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace simd_bench {
 
@@ -49,12 +45,14 @@ struct Rung {
 /// Every rung that was built and that this machine can run, lowest first.
 std::vector<Rung> runnable_rungs() {
     using Fn                           = Kernels const &(*)() noexcept;
-    Fn const                   slots[] = {EINSUMS_SIMD_LADDER(kernels)};
+    Fn const                   slots[] = {STRIPES_LADDER_SLOTS(kernels)};
     simd::InstructionSet const sets[]  = {simd::InstructionSet::Baseline, simd::InstructionSet::V2, simd::InstructionSet::V3,
                                           simd::InstructionSet::V4, simd::InstructionSet::Sme};
     std::vector<Rung>          out;
     for (int i = 0; i < 5; ++i) {
-        if (slots[i] != nullptr && simd::supports(simd::cpu_features(), sets[i])) {
+        bool const runs = sets[i] == simd::InstructionSet::Sme ? simd::sme_rung_runs(simd::cpu_features(), STRIPES_SME_REQUIRES)
+                                                               : simd::supports(simd::cpu_features(), sets[i]);
+        if (slots[i] != nullptr && runs) {
             out.push_back({sets[i], &slots[i]()});
         }
     }
@@ -90,15 +88,31 @@ struct OwnedTable {
     }
 };
 
+/// Time fn over repetitions after one warm-up call, and print the mean and spread in microseconds.
 void bench(std::string const &label, simd::InstructionSet set, auto &&fn) {
-    std::string const full = label + " [" + simd::to_string(set) + "]";
-    ProfileAnnotate("rung", simd::to_string(set));
-    publish_benchmark_result(full.c_str(), "t_us", static_cast<int>(n), time_us(full.c_str(), fn, 50));
+    constexpr int     repetitions = 50;
+    std::string const full        = label + " [" + simd::to_string(set) + "]";
+    fn();
+    std::vector<double> us;
+    us.reserve(repetitions);
+    for (int r = 0; r < repetitions; ++r) {
+        auto const start = std::chrono::steady_clock::now();
+        fn();
+        us.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count());
+    }
+    double const mean = std::accumulate(us.begin(), us.end(), 0.0) / repetitions;
+    double       var  = 0;
+    for (double t : us) {
+        var += (t - mean) * (t - mean);
+    }
+    double const stddev = std::sqrt(var / repetitions);
+    std::printf("[%s N=%zu] Time: %.2f us  min: %.2f  max: %.2f  stddev: %.2f  cv: %.1f%%\n", full.c_str(), n, mean,
+                *std::min_element(us.begin(), us.end()), *std::max_element(us.begin(), us.end()), stddev, 100.0 * stddev / mean);
 }
 
 } // namespace
 
-EINSUMS_TEST_CASE("SIMD gather, conversion and interpolation on every supported rung", "[performance][simd]") {
+TEST_CASE("SIMD gather, conversion and interpolation on every supported rung", "[performance][simd]") {
     std::mt19937 rng(20261001);
 
     // Gather indices into a table that fits L1 and one that does not.

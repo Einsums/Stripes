@@ -4,30 +4,28 @@
      Licensed under the MIT License. See LICENSE.txt in the project root for license information.
     ----------------------------------------------------------------------------------------------
 
-.. _modules_Einsums_SIMD:
+*******
+Stripes
+*******
 
-****
-SIMD
-****
-
-The ``SIMD`` module provides a portable, header-only SIMD abstraction for
-vectorized operations. It wraps platform-specific intrinsics behind a clean
-C++20 interface that works across:
+Stripes is a portable SIMD library for vectorized kernels. It wraps
+platform-specific intrinsics behind a C++20 interface that works across:
 
 - x86_64: SSE2, SSSE3, SSE4.1/4.2, AVX, AVX2, and AVX-512.
 - ARM: NEON on Apple Silicon and other aarch64 targets.
 
-The module is used internally by the HPTT transpose library and can be used
-directly for performance-critical inner loops.
+Everything is header-only except a small runtime library that detects the
+CPU and picks a dispatch rung. Stripes started as the ``SIMD`` module of
+Einsums, which uses it for its HPTT transposes and packed GEMM kernels.
 
 Platform Detection
 ==================
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Platform.hpp>
+    #include <Stripes/Platform.hpp>
 
-    using namespace einsums::simd;
+    using namespace stripes;
 
     // Compile-time constants
     static_assert(native_bits == 128 || native_bits == 256 || native_bits == 512);
@@ -44,10 +42,10 @@ Core Vec Type
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Vec.hpp>
-    #include <Einsums/SIMD/Operations.hpp>
+    #include <Stripes/Vec.hpp>
+    #include <Stripes/Operations.hpp>
 
-    using namespace einsums::simd;
+    using namespace stripes;
 
     // Broadcast a scalar to all lanes
     Vec<float> a = broadcast<float>(3.14f);
@@ -258,9 +256,9 @@ reference.
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Generic.hpp>
+    #include <Stripes/Generic.hpp>
 
-    namespace simd = einsums::simd;
+    namespace simd = stripes;
 
     template <typename V>
     V step(V x, V y, simd::scalar_t<V> const *table) {
@@ -291,10 +289,10 @@ differently in each instantiation, so compile a bit-for-bit comparison with
 ``a < b ? a : b``, the fused forms round once exactly where the vector forms
 do, and a comparison returns ``bool``. Call them qualified, as
 ``simd::fmadd``: argument-dependent lookup finds nothing for ``double``. They
-are constrained templates, so under ``using namespace einsums::simd`` an
+are constrained templates, so under ``using namespace stripes`` an
 unqualified ``sqrt(2.0)`` still calls the C library. ``std::min`` and
 ``std::max`` are templates too, so code with both ``using namespace std`` and
-``using namespace einsums::simd`` must qualify ``min`` and ``max`` on scalars.
+``using namespace stripes`` must qualify ``min`` and ``max`` on scalars.
 
 A ``Vec<T>`` mixes with a scalar in ``+ - * /`` and in ``+= -= *= /=`` when
 the scalar is ``T`` or an integer: ``v * 2`` compiles, ``Vec<float> * 2.0``
@@ -313,7 +311,7 @@ same bits, and a kernel's scalar reference matches its vector lanes.
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Math.hpp>
+    #include <Stripes/Math.hpp>
 
     Vec<double> const e  = simd::exp(-t);                 // e^-T, the Boys downward recursion
     Vec<double> const f0 = half_sqrt_pi * simd::rsqrt(t) * simd::erf(simd::sqrt(t)); // F_0(T), T > 0
@@ -340,7 +338,7 @@ subnormal results included:
 Each returns the exact result at its special values (``exp(0) = 1``,
 ``erf(-0) = -0``, ``erfc(-inf) = 2``, ``rsqrt(-0) = -inf``, and so on) and
 passes NaN through. They need the integer shifts, which AVX without AVX2
-lacks. Under ``using namespace einsums::simd``, an unqualified ``exp(2.0)``
+lacks. Under ``using namespace stripes``, an unqualified ``exp(2.0)``
 still calls the C library; call ``simd::exp`` for these algorithms on scalars.
 
 Mixed Precision at Equal Width
@@ -356,7 +354,7 @@ way.
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Generic.hpp>
+    #include <Stripes/Generic.hpp>
 
     using F = simd::Vec<float>;                       // FP32 tier
     using D = simd::Vec<double, simd::lanes<float>>;  // FP64 tier, same lanes
@@ -383,7 +381,7 @@ chain of them may spill where the same chain in ``Vec<double>`` did not.
 Examples
 ========
 
-Each program in ``libs/Einsums/SIMD/examples`` checks its result against a
+Each program in ``examples`` checks its result against a
 scalar loop and runs as a test:
 
 - ``PlatformInfo``: the width this build compiled for, and the rungs the CPU
@@ -410,7 +408,7 @@ micro-kernels:
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Shuffle.hpp>
+    #include <Stripes/Shuffle.hpp>
 
     // Transpose a 4x4 float matrix stored in 4 Vec<float> registers (SSE/NEON)
     Vec<float> rows[4];
@@ -457,7 +455,7 @@ Strided memory access, with hardware gathers where the ISA has them:
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Gather.hpp>
+    #include <Stripes/Gather.hpp>
 
     float data[64] = { /* ... */ };
 
@@ -492,7 +490,7 @@ Complex Numbers
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/ComplexVec.hpp>
+    #include <Stripes/ComplexVec.hpp>
 
     // Load interleaved complex data: [re0, im0, re1, im1, ...]
     std::complex<float> z[4] = {{1,2}, {3,4}, {5,6}, {7,8}};
@@ -521,7 +519,7 @@ Prefetch and Streaming
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/Prefetch.hpp>
+    #include <Stripes/Prefetch.hpp>
 
     // Prefetch for read
     prefetch<PrefetchHint::T0>(data);       // Into L1 cache
@@ -544,9 +542,9 @@ startup.
 
 .. code-block:: cpp
 
-    #include <Einsums/SIMD/RuntimeFeatures.hpp>
+    #include <Stripes/RuntimeFeatures.hpp>
 
-    using namespace einsums::simd;
+    using namespace stripes;
 
     // Cached, thread-safe, detected once per process.
     CpuFeatures const &f = cpu_features();
@@ -580,25 +578,36 @@ nest the way the x86 levels do: Apple M4 has SME but no non-streaming SVE.
 So the ladder is not a ranking of enumerator values. ``supports()`` says
 whether a machine can run a rung, and ``preference_order()`` lists each
 architecture's rungs from most to least preferred (``V4, V3, V2, Baseline``
-on x86, ``Sme, Baseline`` on aarch64). The ``Sme`` gate also requires
-whatever else the rung's flags switch on for the compiler in use: GCC
-before 15 makes ``+sme`` imply ``+sve2``, and a build with such a compiler
-only selects ``Sme`` on a core that has SVE2 as well.
+on x86, ``Sme, Baseline`` on aarch64).
+
+For ``Sme``, ``supports()`` checks only the rung's own instructions. The code
+compiled for the rung may need more: GCC before 15 makes ``+sme`` imply
+``+sve2``, and its autovectorizer may then emit non-streaming SVE anywhere in
+those translation units, which faults on Apple M4. That depends on the compiler
+that built the code, which need not be the one that built Stripes, so
+``stripes_add_dispatch_sources()`` probes the consuming project's compiler and
+adds ``STRIPES_SME_RUNG_ENABLES_SVE`` and ``_SVE2`` to its definitions, and
+``STRIPES_LADDER`` passes them to ``select()`` as a ``SmeRungRequires``. A
+caller of ``select()`` without them gets the cautious default, which takes the
+``Sme`` copy only on a core that has SVE and SVE2.
 
 Overriding the rung
 -------------------
 
-Set :option:`--einsums:simd:arch`, or its environment variable
-``EINSUMS_SIMD_ARCH``, to ``baseline``, ``v2``, ``v3``, ``v4``, ``sme``, or
-one of the aliases ``sse2``/``sse4.2``/``avx2``/``avx512``/``sme2`` to force
-another rung. This is the primary tool for
+Set the environment variable ``STRIPES_ARCH`` to ``baseline``, ``v2``,
+``v3``, ``v4``, ``sme``, or one of the aliases
+``sse2``/``sse4.2``/``avx2``/``avx512``/``sme2`` to force another rung. A
+program with its own configuration can pass the same name to
+``stripes::set_arch_override()`` before the first dispatch, which takes
+precedence over the variable; ``stripes::set_message_handler()`` routes the
+warnings below into its logging. This is the primary tool for
 testing every rung of a dispatch ladder on one machine. An override can only
-choose a rung the machine supports. Asking for one it cannot run logs a
+choose a rung the machine supports. Asking for one it cannot run gives a
 warning and takes the next supported rung in the architecture's preference
 order, so ``v4`` on an AVX2 machine gives ``v3``. A rung of another
 architecture, such as ``v3`` on aarch64, is ignored with a warning. For test
-suites, prefer ``einsums_add_simd_rung_tests()``: it wraps each per-rung
-registration in the ``simd_rung_guard`` launcher, which turns an unsupported
+suites, prefer ``stripes_add_rung_tests()``: it wraps each per-rung
+registration in the ``stripes_rung_guard`` launcher, which turns an unsupported
 rung into an honest ctest "Skipped" (exit 77) instead of a silent rerun at
 another rung. The value is read once and cached; tests that need to exercise
 the resolution logic itself should call ``resolve_arch()`` with explicit
@@ -608,16 +617,16 @@ Building a dispatch ladder
 --------------------------
 
 A kernel that should use the widest registers the CPU has is written once and
-compiled several times, once per rung. ``einsums_add_simd_dispatch_sources``
-(``cmake/Einsums_AddSIMDDispatch.cmake``) generates the per-rung translation
+compiled several times, once per rung. ``stripes_add_dispatch_sources``
+(``cmake/StripesDispatch.cmake``) generates the per-rung translation
 units: each includes the implementation file, compiles with that rung's
-``-march`` flags, and defines ``EINSUMS_SIMD_ARCH_NS`` to a namespace of its
+``-march`` flags, and defines ``STRIPES_ARCH_NS`` to a namespace of its
 own. Because the SIMD headers key off compiler-defined macros, the same
 source widens ``Vec<T>`` and every operation to each rung's register width.
 
 .. code-block:: cmake
 
-    einsums_add_simd_dispatch_sources(MyKernelRungs IMPL src/KernelImpl.cpp RUNGS baseline v2 v3 v4)
+    stripes_add_dispatch_sources(MyKernelRungs IMPL src/KernelImpl.cpp RUNGS baseline v2 v3 v4)
     target_sources(my_target PRIVATE ${MyKernelRungs})
     set_source_files_properties(src/KernelDispatch.cpp PROPERTIES COMPILE_DEFINITIONS "${MyKernelRungs_DEFINITIONS}")
 
@@ -626,27 +635,30 @@ The implementation wraps its entry points in the rung namespace:
 .. code-block:: cpp
 
     // KernelImpl.cpp: compiled once per rung.
-    namespace mylib::EINSUMS_SIMD_ARCH_NS {
+    namespace mylib::STRIPES_ARCH_NS {
     void kernel(float const *x, float *y, std::size_t n) { /* Vec<float> code */ }
     }
 
 and one arch-neutral file declares every copy that was built and picks one.
-``EINSUMS_SIMD_FOR_EACH_BUILT_RUNG`` names each built namespace,
-``EINSUMS_SIMD_LADDER`` expands to the five slots ``select()`` takes (with
-``nullptr`` for rungs not built), and ``select()`` returns the slot of the rung
-``selected_arch()`` chose:
+``STRIPES_FOR_EACH_BUILT_RUNG`` names each built namespace,
+``STRIPES_LADDER`` expands to the five slots ``select()`` takes (with
+``nullptr`` for rungs not built) followed by what the ``sme`` copy needs
+besides SME, and ``select()`` returns the slot of the rung ``selected_arch()``
+chose. Give the dispatch definitions to the file that calls ``select()``;
+``STRIPES_LADDER_SLOTS`` is the five slots alone, for code that walks them
+itself:
 
 .. code-block:: cpp
 
     // KernelDispatch.cpp: compiled once, at the ambient flags.
     namespace mylib {
     #define DECLARE(ns) namespace ns { void kernel(float const *, float *, std::size_t); }
-    EINSUMS_SIMD_FOR_EACH_BUILT_RUNG(DECLARE)
+    STRIPES_FOR_EACH_BUILT_RUNG(DECLARE)
     #undef DECLARE
 
     void kernel(float const *x, float *y, std::size_t n) {
         using Fn = void (*)(float const *, float *, std::size_t);
-        static Fn const fn = einsums::simd::select<Fn>(EINSUMS_SIMD_LADDER(kernel));
+        static Fn const fn = stripes::select<Fn>(STRIPES_LADDER(kernel));
         fn(x, y, n);
     }
     }
@@ -659,13 +671,13 @@ own consumers.
 Each copy of the implementation is a different program under the same source,
 so nothing it defines may share a name with another copy: the linker keeps one
 definition per name and hands it to every caller. Your own code is kept apart
-by ``EINSUMS_SIMD_ARCH_NS``. The SIMD headers keep theirs apart themselves:
+by ``STRIPES_ARCH_NS``. The SIMD headers keep theirs apart themselves:
 they declare everything inside an inline namespace named for the features the
 translation unit was compiled with, such as
-``einsums::simd::isa_avx_avx2_fma_sse3_ssse3_sse41_sse42``. It is transparent,
-so ``einsums::simd::Vec<float>`` names it, but ``Vec<float>`` at v3 and at v4
+``stripes::isa_avx_avx2_fma_sse3_ssse3_sse41_sse42``. It is transparent,
+so ``stripes::Vec<float>`` names it, but ``Vec<float>`` at v3 and at v4
 are different types to the linker, and a helper that does not inline is a
-different function in each copy. ``EINSUMS_SIMD_ISA_NS`` expands to the name.
+different function in each copy. ``STRIPES_ISA_NS`` expands to the name.
 
 Neither namespace covers templates from other libraries. A ``std::vector``
 member or an fmt formatter instantiated in the implementation file is emitted
@@ -673,19 +685,18 @@ by every copy under one name, compiled at that copy's flags, and the program
 calls whichever copy the linker kept. Keep such code in an arch-neutral file
 and pass the kernel plain pointers and sizes, as HPTT does: its planner is
 compiled once, and only its kernels (``TransposeKernels.cpp``) once per rung.
-On Linux, ``einsums_add_simd_rung_objects_test(<subcategory> <target>)``
+On Linux, ``stripes_add_rung_objects_test(<subcategory> <target>)``
 registers a test that fails when a per-rung object of ``<target>`` defines a
 weak symbol outside its rung's namespaces; HPTT and PackedGemm use it.
 
-The whole mechanism sits behind ``EINSUMS_WITH_SIMD_DISPATCH`` (default ON).
+The whole mechanism sits behind ``STRIPES_WITH_DISPATCH`` (default ON).
 When it is OFF, or when a compile-time pin is in effect (below), the helper
 emits a single ``native`` rung compiled at the ambient flags. On aarch64 the
 x86 rungs do not exist, so the ladder is that ``native`` rung plus ``sme``
 when the caller asks for it.
 
 Interaction with the compile-time pinning options: building with
-``EINSUMS_SIMD_NATIVE_ARCH=ON`` or ``EINSUMS_SIMD_TARGET_CPU=<cpu>`` raises
+``STRIPES_NATIVE_ARCH=ON`` or ``STRIPES_TARGET_CPU=<cpu>`` raises
 the baseline of *every* SIMD consumer to that target, which makes the binary
 non-portable and runtime dispatch pointless; use one approach or the other.
 
-See the :ref:`API reference <modules_Einsums_SIMD_api>` of this module for more details.

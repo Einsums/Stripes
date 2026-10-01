@@ -8,17 +8,16 @@
 // exact-size cases put the span at the end of its allocation, so a store past it is a heap overflow
 // the sanitizer legs report.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Prefetch.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Prefetch.hpp>
 #include <cstddef>
 #include <memory>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 

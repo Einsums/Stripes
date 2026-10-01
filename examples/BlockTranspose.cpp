@@ -13,15 +13,13 @@
 ///
 /// Edges that do not fill a whole tile are finished with a scalar loop.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Shuffle.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Shuffle.hpp>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -51,7 +49,7 @@ void transpose(float const *in, std::size_t rows, std::size_t cols, float *out) 
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const  rows = 37, cols = 21;
     std::vector<float> in(rows * cols), out(cols * rows);
     for (std::size_t i = 0; i < in.size(); ++i) {
@@ -68,8 +66,4 @@ int einsums_main() {
     std::cout << rows << " x " << cols << " transposed in " << lanes<float> << " x "
               << lanes<float> << " register tiles: " << (failures ? "FAILED" : "ok") << "\n";
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

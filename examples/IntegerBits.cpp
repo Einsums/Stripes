@@ -18,16 +18,14 @@
 /// AVX without AVX2 has no 256-bit integer instructions: on such a build these operations are
 /// missing and the program fails to link, rather than silently running something else.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Reduce.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -63,7 +61,7 @@ std::int32_t count_equal(std::size_t n, std::int32_t const *v, std::int32_t key)
 
 } // namespace
 
-int einsums_main() {
+int main() {
     constexpr std::size_t      L = lanes<std::uint32_t>;
     std::size_t const          n = 16 * L;
     std::vector<std::uint32_t> seeds(n), hashed(n);
@@ -91,8 +89,4 @@ int einsums_main() {
     std::cout << "elements equal to 2: " << got << " (expected " << expect << ")\n";
     failures += got != expect;
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

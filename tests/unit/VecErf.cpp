@@ -14,15 +14,14 @@
 // and the bounds checked here are 1.6, 2.0 and 4.5 ulp. Special values are checked exactly. That the
 // scalar instantiations match the vector lanes bit for bit is checked in GenericKernel.
 
-#include <Einsums/SIMD/Math.hpp>
-
+#include <Stripes/Math.hpp>
 #include <cmath>
 #include <limits>
 #include <type_traits>
 
 #include <catch2/catch_all.hpp>
 
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace {
 

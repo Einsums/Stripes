@@ -14,17 +14,15 @@
 /// The price is a different summation order from a sequential loop, so the result differs in the
 /// last bits. The check below allows for that.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Reduce.hpp>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -51,7 +49,7 @@ double dot(std::size_t n, double const *x, double const *y) {
 
 } // namespace
 
-int einsums_main() {
+int main() {
     int failures = 0;
     for (std::size_t n : {0, 1, 5, 16, 63, 64, 65, 1000, 100003}) {
         std::vector<double> x(n), y(n);
@@ -71,8 +69,4 @@ int einsums_main() {
         }
     }
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

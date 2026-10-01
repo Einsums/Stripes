@@ -11,16 +11,14 @@
 /// conjugate do the shuffling a complex product needs. A CVec holds Vec<T>::lanes / 2 complex
 /// numbers, so the loop steps by complex_lanes; the scalar loop finishes whatever is left.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/ComplexVec.hpp>
-
+#include <Stripes/ComplexVec.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 
@@ -40,7 +38,7 @@ void conj_axpy(std::size_t n, std::complex<double> a, std::complex<double> const
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const                 n = 37;
     std::complex<double> const        a{0.5, -2.0};
     std::vector<std::complex<double>> x(n), y(n), expect(n);
@@ -57,8 +55,4 @@ int einsums_main() {
     }
     std::cout << CVec<double>::complex_lanes << " complex<double> per CVec; largest error " << worst << "\n";
     return worst < 1e-13 ? 0 : 1;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

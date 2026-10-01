@@ -5,14 +5,12 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Convert.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Convert.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Reduce.hpp>
+#include <Stripes/Vec.hpp>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -42,8 +40,8 @@
 // mask casts are one or two instructions per register on every ISA.
 // ===========================================================================
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 namespace detail {
 /// N lanes of T need more than one register.
@@ -52,7 +50,7 @@ concept wide_lanes = N != VecTraits<T>::lanes;
 
 /// Part k of a vector or mask, which is the whole of a native one.
 template <typename T, int N>
-EINSUMS_FORCEINLINE Vec<T> part_of(Vec<T, N> const &v, int k) {
+STRIPES_FORCEINLINE Vec<T> part_of(Vec<T, N> const &v, int k) {
     if constexpr (Vec<T, N>::native) {
         return v;
     } else {
@@ -60,7 +58,7 @@ EINSUMS_FORCEINLINE Vec<T> part_of(Vec<T, N> const &v, int k) {
     }
 }
 template <typename T, int N>
-EINSUMS_FORCEINLINE void set_part(Vec<T, N> &v, int k, Vec<T> p) {
+STRIPES_FORCEINLINE void set_part(Vec<T, N> &v, int k, Vec<T> p) {
     if constexpr (Vec<T, N>::native) {
         v = p;
     } else {
@@ -68,7 +66,7 @@ EINSUMS_FORCEINLINE void set_part(Vec<T, N> &v, int k, Vec<T> p) {
     }
 }
 template <typename T, int N>
-EINSUMS_FORCEINLINE Mask<T> part_of(Mask<T, N> const &m, int k) {
+STRIPES_FORCEINLINE Mask<T> part_of(Mask<T, N> const &m, int k) {
     if constexpr (Mask<T, N>::native) {
         return m;
     } else {
@@ -76,7 +74,7 @@ EINSUMS_FORCEINLINE Mask<T> part_of(Mask<T, N> const &m, int k) {
     }
 }
 template <typename T, int N>
-EINSUMS_FORCEINLINE void set_part(Mask<T, N> &m, int k, Mask<T> p) {
+STRIPES_FORCEINLINE void set_part(Mask<T, N> &m, int k, Mask<T> p) {
     if constexpr (Mask<T, N>::native) {
         m = p;
     } else {
@@ -89,40 +87,40 @@ EINSUMS_FORCEINLINE void set_part(Mask<T, N> &m, int k, Mask<T> p) {
 // Elementwise operations, comparisons and select.
 // ---------------------------------------------------------------------------
 
-#define EINSUMS_SIMD_WIDE_UNARY(fn)                                                                                                        \
+#define STRIPES_WIDE_UNARY(fn)                                                                                                             \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE Vec<T, N> fn(Vec<T, N> a) {                                                                                        \
+    STRIPES_FORCEINLINE Vec<T, N> fn(Vec<T, N> a) {                                                                                        \
         Vec<T, N> r;                                                                                                                       \
         for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                       \
             r.part[k] = fn(a.part[k]);                                                                                                     \
         }                                                                                                                                  \
         return r;                                                                                                                          \
     }
-#define EINSUMS_SIMD_WIDE_BINARY(fn)                                                                                                       \
+#define STRIPES_WIDE_BINARY(fn)                                                                                                            \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE Vec<T, N> fn(Vec<T, N> a, Vec<T, N> b) {                                                                           \
+    STRIPES_FORCEINLINE Vec<T, N> fn(Vec<T, N> a, Vec<T, N> b) {                                                                           \
         Vec<T, N> r;                                                                                                                       \
         for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                       \
             r.part[k] = fn(a.part[k], b.part[k]);                                                                                          \
         }                                                                                                                                  \
         return r;                                                                                                                          \
     }
-#define EINSUMS_SIMD_WIDE_TERNARY(fn)                                                                                                      \
+#define STRIPES_WIDE_TERNARY(fn)                                                                                                           \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE Vec<T, N> fn(Vec<T, N> a, Vec<T, N> b, Vec<T, N> c) {                                                              \
+    STRIPES_FORCEINLINE Vec<T, N> fn(Vec<T, N> a, Vec<T, N> b, Vec<T, N> c) {                                                              \
         Vec<T, N> r;                                                                                                                       \
         for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                       \
             r.part[k] = fn(a.part[k], b.part[k], c.part[k]);                                                                               \
         }                                                                                                                                  \
         return r;                                                                                                                          \
     }
-#define EINSUMS_SIMD_WIDE_COMPARE(fn)                                                                                                      \
+#define STRIPES_WIDE_COMPARE(fn)                                                                                                           \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE Mask<T, N> fn(Vec<T, N> a, Vec<T, N> b) {                                                                          \
+    STRIPES_FORCEINLINE Mask<T, N> fn(Vec<T, N> a, Vec<T, N> b) {                                                                          \
         Mask<T, N> r;                                                                                                                      \
         for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                       \
             r.part[k] = fn(a.part[k], b.part[k]);                                                                                          \
@@ -130,42 +128,42 @@ EINSUMS_FORCEINLINE void set_part(Mask<T, N> &m, int k, Mask<T> p) {
         return r;                                                                                                                          \
     }
 
-EINSUMS_SIMD_WIDE_UNARY(neg)
-EINSUMS_SIMD_WIDE_UNARY(sqrt)
-EINSUMS_SIMD_WIDE_UNARY(abs)
-EINSUMS_SIMD_WIDE_UNARY(floor)
-EINSUMS_SIMD_WIDE_UNARY(ceil)
-EINSUMS_SIMD_WIDE_UNARY(trunc)
-EINSUMS_SIMD_WIDE_UNARY(round)
-EINSUMS_SIMD_WIDE_UNARY(round_even)
-EINSUMS_SIMD_WIDE_BINARY(add)
-EINSUMS_SIMD_WIDE_BINARY(sub)
-EINSUMS_SIMD_WIDE_BINARY(mul)
-EINSUMS_SIMD_WIDE_BINARY(div)
-EINSUMS_SIMD_WIDE_BINARY(min)
-EINSUMS_SIMD_WIDE_BINARY(max)
-EINSUMS_SIMD_WIDE_BINARY(bitwise_and)
-EINSUMS_SIMD_WIDE_BINARY(bitwise_or)
-EINSUMS_SIMD_WIDE_BINARY(bitwise_xor)
-EINSUMS_SIMD_WIDE_BINARY(bitwise_andnot)
-EINSUMS_SIMD_WIDE_TERNARY(fmadd)
-EINSUMS_SIMD_WIDE_TERNARY(fmsub)
-EINSUMS_SIMD_WIDE_TERNARY(fnmadd)
-EINSUMS_SIMD_WIDE_TERNARY(fnmsub)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_eq)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_ne)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_lt)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_le)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_gt)
-EINSUMS_SIMD_WIDE_COMPARE(cmp_ge)
-#undef EINSUMS_SIMD_WIDE_UNARY
-#undef EINSUMS_SIMD_WIDE_BINARY
-#undef EINSUMS_SIMD_WIDE_TERNARY
-#undef EINSUMS_SIMD_WIDE_COMPARE
+STRIPES_WIDE_UNARY(neg)
+STRIPES_WIDE_UNARY(sqrt)
+STRIPES_WIDE_UNARY(abs)
+STRIPES_WIDE_UNARY(floor)
+STRIPES_WIDE_UNARY(ceil)
+STRIPES_WIDE_UNARY(trunc)
+STRIPES_WIDE_UNARY(round)
+STRIPES_WIDE_UNARY(round_even)
+STRIPES_WIDE_BINARY(add)
+STRIPES_WIDE_BINARY(sub)
+STRIPES_WIDE_BINARY(mul)
+STRIPES_WIDE_BINARY(div)
+STRIPES_WIDE_BINARY(min)
+STRIPES_WIDE_BINARY(max)
+STRIPES_WIDE_BINARY(bitwise_and)
+STRIPES_WIDE_BINARY(bitwise_or)
+STRIPES_WIDE_BINARY(bitwise_xor)
+STRIPES_WIDE_BINARY(bitwise_andnot)
+STRIPES_WIDE_TERNARY(fmadd)
+STRIPES_WIDE_TERNARY(fmsub)
+STRIPES_WIDE_TERNARY(fnmadd)
+STRIPES_WIDE_TERNARY(fnmsub)
+STRIPES_WIDE_COMPARE(cmp_eq)
+STRIPES_WIDE_COMPARE(cmp_ne)
+STRIPES_WIDE_COMPARE(cmp_lt)
+STRIPES_WIDE_COMPARE(cmp_le)
+STRIPES_WIDE_COMPARE(cmp_gt)
+STRIPES_WIDE_COMPARE(cmp_ge)
+#undef STRIPES_WIDE_UNARY
+#undef STRIPES_WIDE_BINARY
+#undef STRIPES_WIDE_TERNARY
+#undef STRIPES_WIDE_COMPARE
 
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> select(Mask<T, N> m, Vec<T, N> a, Vec<T, N> b) {
+STRIPES_FORCEINLINE Vec<T, N> select(Mask<T, N> m, Vec<T, N> a, Vec<T, N> b) {
     Vec<T, N> r;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
         r.part[k] = select(m.part[k], a.part[k], b.part[k]);
@@ -177,40 +175,40 @@ EINSUMS_FORCEINLINE Vec<T, N> select(Mask<T, N> m, Vec<T, N> a, Vec<T, N> b) {
 // Mask logic.
 // ---------------------------------------------------------------------------
 
-#define EINSUMS_SIMD_WIDE_MASK_BINARY(fn)                                                                                                  \
+#define STRIPES_WIDE_MASK_BINARY(fn)                                                                                                       \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE Mask<T, N> fn(Mask<T, N> a, Mask<T, N> b) {                                                                        \
+    STRIPES_FORCEINLINE Mask<T, N> fn(Mask<T, N> a, Mask<T, N> b) {                                                                        \
         Mask<T, N> r;                                                                                                                      \
         for (int k = 0; k < Mask<T, N>::parts; ++k) {                                                                                      \
             r.part[k] = fn(a.part[k], b.part[k]);                                                                                          \
         }                                                                                                                                  \
         return r;                                                                                                                          \
     }
-EINSUMS_SIMD_WIDE_MASK_BINARY(bitwise_and)
-EINSUMS_SIMD_WIDE_MASK_BINARY(bitwise_or)
-EINSUMS_SIMD_WIDE_MASK_BINARY(bitwise_xor)
-EINSUMS_SIMD_WIDE_MASK_BINARY(bitwise_andnot)
-#undef EINSUMS_SIMD_WIDE_MASK_BINARY
+STRIPES_WIDE_MASK_BINARY(bitwise_and)
+STRIPES_WIDE_MASK_BINARY(bitwise_or)
+STRIPES_WIDE_MASK_BINARY(bitwise_xor)
+STRIPES_WIDE_MASK_BINARY(bitwise_andnot)
+#undef STRIPES_WIDE_MASK_BINARY
 
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> operator&(Mask<T, N> a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> operator&(Mask<T, N> a, Mask<T, N> b) {
     return bitwise_and(a, b);
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> operator|(Mask<T, N> a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> operator|(Mask<T, N> a, Mask<T, N> b) {
     return bitwise_or(a, b);
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> operator^(Mask<T, N> a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> operator^(Mask<T, N> a, Mask<T, N> b) {
     return bitwise_xor(a, b);
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> operator!(Mask<T, N> a) {
+STRIPES_FORCEINLINE Mask<T, N> operator!(Mask<T, N> a) {
     Mask<T, N> r;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
         r.part[k] = !a.part[k];
@@ -219,24 +217,24 @@ EINSUMS_FORCEINLINE Mask<T, N> operator!(Mask<T, N> a) {
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> &operator&=(Mask<T, N> &a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> &operator&=(Mask<T, N> &a, Mask<T, N> b) {
     return a = a & b;
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> &operator|=(Mask<T, N> &a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> &operator|=(Mask<T, N> &a, Mask<T, N> b) {
     return a = a | b;
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Mask<T, N> &operator^=(Mask<T, N> &a, Mask<T, N> b) {
+STRIPES_FORCEINLINE Mask<T, N> &operator^=(Mask<T, N> &a, Mask<T, N> b) {
     return a = a ^ b;
 }
 
 /// The lanes of m as an integer, lane i in bit i.
 template <typename T, int N>
     requires(detail::wide_lanes<T, N> && N <= 64)
-EINSUMS_FORCEINLINE uint64_t to_bits(Mask<T, N> m) {
+STRIPES_FORCEINLINE uint64_t to_bits(Mask<T, N> m) {
     constexpr int L    = VecTraits<T>::lanes;
     uint64_t      bits = 0;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
@@ -246,7 +244,7 @@ EINSUMS_FORCEINLINE uint64_t to_bits(Mask<T, N> m) {
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE bool any(Mask<T, N> m) {
+STRIPES_FORCEINLINE bool any(Mask<T, N> m) {
     bool r = false;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
         r = r || any(m.part[k]);
@@ -255,7 +253,7 @@ EINSUMS_FORCEINLINE bool any(Mask<T, N> m) {
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE bool all(Mask<T, N> m) {
+STRIPES_FORCEINLINE bool all(Mask<T, N> m) {
     bool r = true;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
         r = r && all(m.part[k]);
@@ -264,12 +262,12 @@ EINSUMS_FORCEINLINE bool all(Mask<T, N> m) {
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE bool none(Mask<T, N> m) {
+STRIPES_FORCEINLINE bool none(Mask<T, N> m) {
     return !any(m);
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE int count(Mask<T, N> m) {
+STRIPES_FORCEINLINE int count(Mask<T, N> m) {
     int r = 0;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
         r += count(m.part[k]);
@@ -278,7 +276,7 @@ EINSUMS_FORCEINLINE int count(Mask<T, N> m) {
 }
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> to_vec(Mask<T, N> m) {
+STRIPES_FORCEINLINE Vec<T, N> to_vec(Mask<T, N> m) {
     Vec<T, N> r;
     for (int k = 0; k < Mask<T, N>::parts; ++k) {
         r.part[k] = to_vec(m.part[k]);
@@ -290,21 +288,21 @@ EINSUMS_FORCEINLINE Vec<T, N> to_vec(Mask<T, N> m) {
 // Operators.
 // ---------------------------------------------------------------------------
 
-#if !defined(EINSUMS_SIMD_NO_OPERATORS)
+#if !defined(STRIPES_NO_OPERATORS)
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> operator-(Vec<T, N> a) {
+STRIPES_FORCEINLINE Vec<T, N> operator-(Vec<T, N> a) {
     return neg(a);
 }
-#    define EINSUMS_SIMD_WIDE_OPERATOR(op, fn)                                                                                             \
+#    define STRIPES_WIDE_OPERATOR(op, fn)                                                                                                  \
         template <typename T, int N>                                                                                                       \
             requires detail::wide_lanes<T, N>                                                                                              \
-        EINSUMS_FORCEINLINE Vec<T, N> operator op(Vec<T, N> a, Vec<T, N> b) {                                                              \
+        STRIPES_FORCEINLINE Vec<T, N> operator op(Vec<T, N> a, Vec<T, N> b) {                                                              \
             return fn(a, b);                                                                                                               \
         }                                                                                                                                  \
         template <typename T, int N, detail::scalar_operand_for<T> S>                                                                      \
             requires detail::wide_lanes<T, N>                                                                                              \
-        EINSUMS_FORCEINLINE Vec<T, N> operator op(Vec<T, N> a, S b) {                                                                      \
+        STRIPES_FORCEINLINE Vec<T, N> operator op(Vec<T, N> a, S b) {                                                                      \
             Vec<T, N> r;                                                                                                                   \
             for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                   \
                 r.part[k] = fn(a.part[k], broadcast(static_cast<T>(b)));                                                                   \
@@ -313,7 +311,7 @@ EINSUMS_FORCEINLINE Vec<T, N> operator-(Vec<T, N> a) {
         }                                                                                                                                  \
         template <typename T, int N, detail::scalar_operand_for<T> S>                                                                      \
             requires detail::wide_lanes<T, N>                                                                                              \
-        EINSUMS_FORCEINLINE Vec<T, N> operator op(S a, Vec<T, N> b) {                                                                      \
+        STRIPES_FORCEINLINE Vec<T, N> operator op(S a, Vec<T, N> b) {                                                                      \
             Vec<T, N> r;                                                                                                                   \
             for (int k = 0; k < Vec<T, N>::parts; ++k) {                                                                                   \
                 r.part[k] = fn(broadcast(static_cast<T>(a)), b.part[k]);                                                                   \
@@ -322,19 +320,19 @@ EINSUMS_FORCEINLINE Vec<T, N> operator-(Vec<T, N> a) {
         }                                                                                                                                  \
         template <typename T, int N>                                                                                                       \
             requires detail::wide_lanes<T, N>                                                                                              \
-        EINSUMS_FORCEINLINE Vec<T, N> &operator op## = (Vec<T, N> & a, Vec<T, N> b) {                                                      \
+        STRIPES_FORCEINLINE Vec<T, N> &operator op## = (Vec<T, N> & a, Vec<T, N> b) {                                                      \
             return a = fn(a, b);                                                                                                           \
         }                                                                                                                                  \
         template <typename T, int N, detail::scalar_operand_for<T> S>                                                                      \
             requires detail::wide_lanes<T, N>                                                                                              \
-        EINSUMS_FORCEINLINE Vec<T, N> &operator op## = (Vec<T, N> & a, S b) {                                                              \
+        STRIPES_FORCEINLINE Vec<T, N> &operator op## = (Vec<T, N> & a, S b) {                                                              \
             return a = a op b;                                                                                                             \
         }
-EINSUMS_SIMD_WIDE_OPERATOR(+, add)
-EINSUMS_SIMD_WIDE_OPERATOR(-, sub)
-EINSUMS_SIMD_WIDE_OPERATOR(*, mul)
-EINSUMS_SIMD_WIDE_OPERATOR(/, div)
-#    undef EINSUMS_SIMD_WIDE_OPERATOR
+STRIPES_WIDE_OPERATOR(+, add)
+STRIPES_WIDE_OPERATOR(-, sub)
+STRIPES_WIDE_OPERATOR(*, mul)
+STRIPES_WIDE_OPERATOR(/, div)
+#    undef STRIPES_WIDE_OPERATOR
 #endif
 
 // ---------------------------------------------------------------------------
@@ -344,7 +342,7 @@ EINSUMS_SIMD_WIDE_OPERATOR(/, div)
 /// Write v's lanes to consecutive elements from p, which needs no alignment.
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE void storeu(T *p, Vec<T, N> v) {
+STRIPES_FORCEINLINE void storeu(T *p, Vec<T, N> v) {
     constexpr int L = VecTraits<T>::lanes;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
         storeu(p + k * L, v.part[k]);
@@ -354,7 +352,7 @@ EINSUMS_FORCEINLINE void storeu(T *p, Vec<T, N> v) {
 /// p[i] in each lane m sets, zero elsewhere; an inactive lane's memory is never read.
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> loadu(T const *p, Mask<T, N> m) {
+STRIPES_FORCEINLINE Vec<T, N> loadu(T const *p, Mask<T, N> m) {
     constexpr int L = VecTraits<T>::lanes;
     Vec<T, N>     r;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
@@ -366,27 +364,27 @@ EINSUMS_FORCEINLINE Vec<T, N> loadu(T const *p, Mask<T, N> m) {
 /// Write p[i] for each lane m sets, and nothing else.
 template <typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE void storeu(T *p, Vec<T, N> v, Mask<T, N> m) {
+STRIPES_FORCEINLINE void storeu(T *p, Vec<T, N> v, Mask<T, N> m) {
     constexpr int L = VecTraits<T>::lanes;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
         storeu(p + k * L, v.part[k], m.part[k]);
     }
 }
 
-#define EINSUMS_SIMD_WIDE_REDUCE(fn, combine)                                                                                              \
+#define STRIPES_WIDE_REDUCE(fn, combine)                                                                                                   \
     template <typename T, int N>                                                                                                           \
         requires detail::wide_lanes<T, N>                                                                                                  \
-    EINSUMS_FORCEINLINE T fn(Vec<T, N> v) {                                                                                                \
+    STRIPES_FORCEINLINE T fn(Vec<T, N> v) {                                                                                                \
         Vec<T> folded = v.part[0];                                                                                                         \
         for (int k = 1; k < Vec<T, N>::parts; ++k) {                                                                                       \
             folded = combine(folded, v.part[k]);                                                                                           \
         }                                                                                                                                  \
         return fn(folded);                                                                                                                 \
     }
-EINSUMS_SIMD_WIDE_REDUCE(reduce_add, add)
-EINSUMS_SIMD_WIDE_REDUCE(reduce_min, min)
-EINSUMS_SIMD_WIDE_REDUCE(reduce_max, max)
-#undef EINSUMS_SIMD_WIDE_REDUCE
+STRIPES_WIDE_REDUCE(reduce_add, add)
+STRIPES_WIDE_REDUCE(reduce_min, min)
+STRIPES_WIDE_REDUCE(reduce_max, max)
+#undef STRIPES_WIDE_REDUCE
 
 // ---------------------------------------------------------------------------
 // Bits: bitcast between same-width element types, and the immediate shifts.
@@ -394,7 +392,7 @@ EINSUMS_SIMD_WIDE_REDUCE(reduce_max, max)
 
 template <typename To, typename From, int N>
     requires(detail::wide_lanes<From, N> && sizeof(To) == sizeof(From))
-EINSUMS_FORCEINLINE Vec<To, N> bitcast(Vec<From, N> v) {
+STRIPES_FORCEINLINE Vec<To, N> bitcast(Vec<From, N> v) {
     Vec<To, N> r;
     for (int k = 0; k < Vec<From, N>::parts; ++k) {
         r.part[k] = bitcast<To>(v.part[k]);
@@ -403,7 +401,7 @@ EINSUMS_FORCEINLINE Vec<To, N> bitcast(Vec<From, N> v) {
 }
 template <int S, typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> shift_left(Vec<T, N> v) {
+STRIPES_FORCEINLINE Vec<T, N> shift_left(Vec<T, N> v) {
     Vec<T, N> r;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
         r.part[k] = shift_left<S>(v.part[k]);
@@ -412,7 +410,7 @@ EINSUMS_FORCEINLINE Vec<T, N> shift_left(Vec<T, N> v) {
 }
 template <int S, typename T, int N>
     requires detail::wide_lanes<T, N>
-EINSUMS_FORCEINLINE Vec<T, N> shift_right(Vec<T, N> v) {
+STRIPES_FORCEINLINE Vec<T, N> shift_right(Vec<T, N> v) {
     Vec<T, N> r;
     for (int k = 0; k < Vec<T, N>::parts; ++k) {
         r.part[k] = shift_right<S>(v.part[k]);
@@ -428,7 +426,7 @@ EINSUMS_FORCEINLINE Vec<T, N> shift_right(Vec<T, N> v) {
 /// of this header. The form for two types of one native lane count is in Convert.hpp.
 template <typename To, typename From, int N>
     requires(N != VecTraits<To>::lanes || N != VecTraits<From>::lanes)
-EINSUMS_FORCEINLINE Vec<To, N> convert(Vec<From, N> v) {
+STRIPES_FORCEINLINE Vec<To, N> convert(Vec<From, N> v) {
     constexpr int LF = VecTraits<From>::lanes;
     constexpr int LT = VecTraits<To>::lanes;
     Vec<To, N>    r;
@@ -458,8 +456,8 @@ namespace detail {
 // One register of 32-bit lane flags as two registers of 64-bit lane flags, and back. Lane i stays lane
 // i: the low register takes lanes 0 .. L/2 - 1.
 template <typename Wide, typename Narrow>
-EINSUMS_FORCEINLINE void mask_widen(Mask<Narrow> m, Mask<Wide> &lo, Mask<Wide> &hi) {
-#if defined(EINSUMS_SIMD_MASK_IS_K)
+STRIPES_FORCEINLINE void mask_widen(Mask<Narrow> m, Mask<Wide> &lo, Mask<Wide> &hi) {
+#if defined(STRIPES_MASK_IS_K)
     using K = typename Mask<Wide>::reg_type;
     lo      = Mask<Wide>(static_cast<K>(m.reg & 0xFFu));
     hi      = Mask<Wide>(static_cast<K>(m.reg >> 8));
@@ -473,7 +471,7 @@ EINSUMS_FORCEINLINE void mask_widen(Mask<Narrow> m, Mask<Wide> &lo, Mask<Wide> &
     int32x4_t const s = vreinterpretq_s32_u32(m.reg);
     lo                = Mask<Wide>(vreinterpretq_u64_s64(vmovl_s32(vget_low_s32(s))));
     hi                = Mask<Wide>(vreinterpretq_u64_s64(vmovl_high_s32(s)));
-#elif defined(EINSUMS_SIMD_MASK_IS_VECTOR)
+#elif defined(STRIPES_MASK_IS_VECTOR)
     __m128 const f = std::bit_cast<__m128>(m.reg);
     lo             = Mask<Wide>(std::bit_cast<typename Mask<Wide>::reg_type>(_mm_unpacklo_ps(f, f)));
     hi             = Mask<Wide>(std::bit_cast<typename Mask<Wide>::reg_type>(_mm_unpackhi_ps(f, f)));
@@ -483,8 +481,8 @@ EINSUMS_FORCEINLINE void mask_widen(Mask<Narrow> m, Mask<Wide> &lo, Mask<Wide> &
 }
 
 template <typename Narrow, typename Wide>
-EINSUMS_FORCEINLINE Mask<Narrow> mask_narrow(Mask<Wide> lo, Mask<Wide> hi) {
-#if defined(EINSUMS_SIMD_MASK_IS_K)
+STRIPES_FORCEINLINE Mask<Narrow> mask_narrow(Mask<Wide> lo, Mask<Wide> hi) {
+#if defined(STRIPES_MASK_IS_K)
     using K = typename Mask<Narrow>::reg_type;
     return Mask<Narrow>(static_cast<K>(static_cast<unsigned>(lo.reg) | (static_cast<unsigned>(hi.reg) << 8)));
 #elif defined(__AVX__)
@@ -495,7 +493,7 @@ EINSUMS_FORCEINLINE Mask<Narrow> mask_narrow(Mask<Wide> lo, Mask<Wide> hi) {
     return Mask<Narrow>(std::bit_cast<typename Mask<Narrow>::reg_type>(_mm256_insertf128_ps(_mm256_castps128_ps256(a), b, 1)));
 #elif defined(__aarch64__) || defined(_M_ARM64)
     return Mask<Narrow>(vcombine_u32(vmovn_u64(lo.reg), vmovn_u64(hi.reg)));
-#elif defined(EINSUMS_SIMD_MASK_IS_VECTOR)
+#elif defined(STRIPES_MASK_IS_VECTOR)
     __m128 const l = std::bit_cast<__m128>(lo.reg), h = std::bit_cast<__m128>(hi.reg);
     return Mask<Narrow>(std::bit_cast<typename Mask<Narrow>::reg_type>(_mm_shuffle_ps(l, h, _MM_SHUFFLE(2, 0, 2, 0))));
 #else
@@ -509,7 +507,7 @@ EINSUMS_FORCEINLINE Mask<Narrow> mask_narrow(Mask<Wide> lo, Mask<Wide> hi) {
 /// in Operations.hpp.
 template <typename U, typename T, int N>
     requires(N != VecTraits<U>::lanes || N != VecTraits<T>::lanes || sizeof(U) != sizeof(T))
-EINSUMS_FORCEINLINE Mask<U, N> mask_cast(Mask<T, N> m) {
+STRIPES_FORCEINLINE Mask<U, N> mask_cast(Mask<T, N> m) {
     constexpr int LT = VecTraits<T>::lanes;
     constexpr int LU = VecTraits<U>::lanes;
     Mask<U, N>    r;
@@ -539,5 +537,5 @@ EINSUMS_FORCEINLINE Mask<U, N> mask_cast(Mask<T, N> m) {
     return r;
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

@@ -5,20 +5,18 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/ComplexVec.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/ComplexVec.hpp>
+#include <Stripes/Config.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Vec.hpp>
 #include <algorithm>
 #include <complex>
 #include <cstddef>
 #include <utility>
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ===========================================================================
 // In-register transpose: transpose_inplace(Vec<T> *rows)
@@ -58,7 +56,7 @@ EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
 // permutation is its own inverse and fixes the identity matrix, so a
 // round-trip or identity test cannot see it; only an element-by-element
 // comparison against the transpose can.
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
     // Phase 1: 2×2 transposes within 128-bit lanes.
     Vec<double> t[8]; // NOLINT
     for (int i = 0; i < 8; i += 2) {
@@ -93,7 +91,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
 // After phases 1+2, each register s[k] contains, in its four 128-bit lanes,
 // 4 elements of column (k, k+4, k+8, k+12) from a group of 4 consecutive rows.
 // Phases 3+4 reassemble these lane fragments into complete 16-element columns.
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
     // Phase 1+2: Process 4 groups of 4 rows each.
     // After this, rows[g*4+k] holds column-group k from row-group g.
     for (int g = 0; g < 4; g++) {
@@ -131,7 +129,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 #elif defined(__AVX__)
 
 // 4×4 double transpose (AVX)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
     auto t0 = _mm256_shuffle_pd(rows[0], rows[1], 0x0); // a0 b0 a2 b2
     auto t1 = _mm256_shuffle_pd(rows[0], rows[1], 0xf); // a1 b1 a3 b3
     auto t2 = _mm256_shuffle_pd(rows[2], rows[3], 0x0); // c0 d0 c2 d2
@@ -143,7 +141,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
 }
 
 // 8×8 float transpose (AVX)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
     // Phase 1: interleave pairs
     auto t0 = _mm256_unpacklo_ps(rows[0], rows[1]);
     auto t1 = _mm256_unpackhi_ps(rows[0], rows[1]);
@@ -181,7 +179,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 
 // 2×2 double transpose (SSE2)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
     auto lo = _mm_unpacklo_pd(rows[0], rows[1]);
     auto hi = _mm_unpackhi_pd(rows[0], rows[1]);
     rows[0] = lo;
@@ -189,7 +187,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
 }
 
 // 4×4 float transpose (SSE2)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
     auto t0 = _mm_unpacklo_ps(rows[0], rows[1]); // a0 b0 a1 b1
     auto t1 = _mm_unpackhi_ps(rows[0], rows[1]); // a2 b2 a3 b3
     auto t2 = _mm_unpacklo_ps(rows[2], rows[3]); // c0 d0 c1 d1
@@ -206,7 +204,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 #elif defined(__aarch64__) || defined(_M_ARM64)
 
 // 2×2 double transpose (NEON)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
     auto lo = vzip1q_f64(rows[0], rows[1]);
     auto hi = vzip2q_f64(rows[0], rows[1]);
     rows[0] = lo;
@@ -214,7 +212,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
 }
 
 // 4×4 float transpose (NEON)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
     float32x4x2_t const t0 = vuzpq_f32(rows[0], rows[2]);
     float32x4x2_t const t1 = vuzpq_f32(rows[1], rows[3]);
     float32x4x2_t const t2 = vtrnq_f32(t0.val[0], t1.val[0]);
@@ -232,7 +230,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 // The output rows arrive permuted (0,4,2,6,1,5,3,7) which we resolve at
 // the call site. Total: 24 vector ops, no memory round-trip.
 namespace detail {
-EINSUMS_FORCEINLINE void transpose_8x8_u16(uint16x8_t *r) {
+STRIPES_FORCEINLINE void transpose_8x8_u16(uint16x8_t *r) {
     uint16x8_t const t0 = vtrn1q_u16(r[0], r[1]);
     uint16x8_t const t1 = vtrn2q_u16(r[0], r[1]);
     uint16x8_t const t2 = vtrn1q_u16(r[2], r[3]);
@@ -265,7 +263,7 @@ EINSUMS_FORCEINLINE void transpose_8x8_u16(uint16x8_t *r) {
 } // namespace detail
 
 #    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<half_t> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<half_t> *rows) {
     constexpr int N = Vec<half_t>::lanes; // 8
     uint16x8_t    u[N];                   // NOLINT
     for (int i = 0; i < N; ++i)
@@ -277,7 +275,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<half_t> *rows) {
 #    endif
 
 #    if defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<bfloat16_t> *rows) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<bfloat16_t> *rows) {
     constexpr int N = Vec<bfloat16_t>::lanes; // 8
     uint16x8_t    u[N];                       // NOLINT
     for (int i = 0; i < N; ++i)
@@ -293,10 +291,10 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<bfloat16_t> *rows) {
 // ---------------------------------------------------------------------------
 #else
 
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<float> * /*rows*/) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<float> * /*rows*/) {
     // 1×1: nothing to do
 }
-EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> * /*rows*/) {
+STRIPES_FORCEINLINE void transpose_inplace(Vec<double> * /*rows*/) {
     // 1×1: nothing to do
 }
 
@@ -319,7 +317,7 @@ EINSUMS_FORCEINLINE void transpose_inplace(Vec<double> * /*rows*/) {
 
 /// Transpose N×N block of complex<float> values in-place.
 /// N = CVec<float>::complex_lanes.
-EINSUMS_FORCEINLINE void complex_transpose_inplace(CVec<float> *rows) {
+STRIPES_FORCEINLINE void complex_transpose_inplace(CVec<float> *rows) {
     constexpr int N = CVec<float>::complex_lanes;
     if constexpr (N <= 1) {
         // 1×1 or 0: nothing to do
@@ -349,7 +347,7 @@ EINSUMS_FORCEINLINE void complex_transpose_inplace(CVec<float> *rows) {
 
 /// Transpose N×N block of complex<double> values in-place.
 /// N = CVec<double>::complex_lanes.
-EINSUMS_FORCEINLINE void complex_transpose_inplace(CVec<double> *rows) {
+STRIPES_FORCEINLINE void complex_transpose_inplace(CVec<double> *rows) {
     constexpr int N = CVec<double>::complex_lanes;
     if constexpr (N <= 1) {
         return;
@@ -392,7 +390,7 @@ EINSUMS_FORCEINLINE void complex_transpose_inplace(CVec<double> *rows) {
 // ===========================================================================
 
 template <int R, typename T>
-EINSUMS_FORCEINLINE void storeu_interleaved(T *dst, Vec<T> const *rows) {
+STRIPES_FORCEINLINE void storeu_interleaved(T *dst, Vec<T> const *rows) {
     constexpr int L = Vec<T>::lanes;
     static_assert(R >= 1 && R <= L, "storeu_interleaved: between one row and a full register's lanes");
 
@@ -440,7 +438,7 @@ EINSUMS_FORCEINLINE void storeu_interleaved(T *dst, Vec<T> const *rows) {
 // ===========================================================================
 
 template <int R, typename T>
-EINSUMS_FORCEINLINE void loadu_deinterleaved(T const *src, Vec<T> *rows) {
+STRIPES_FORCEINLINE void loadu_deinterleaved(T const *src, Vec<T> *rows) {
     constexpr int L = Vec<T>::lanes;
     static_assert(R >= 1 && R <= L, "loadu_deinterleaved: between one row and a full register's lanes");
 
@@ -459,5 +457,5 @@ EINSUMS_FORCEINLINE void loadu_deinterleaved(T const *src, Vec<T> *rows) {
     }
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

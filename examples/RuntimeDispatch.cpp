@@ -13,23 +13,22 @@
 ///
 /// Three pieces make it work:
 ///
-///   - EINSUMS_SIMD_FOR_EACH_BUILT_RUNG(X) calls X(arch_<rung>) for every rung this build compiled,
+///   - STRIPES_FOR_EACH_BUILT_RUNG(X) calls X(arch_<rung>) for every rung this build compiled,
 ///     which is how the declarations below name every copy without knowing which exist.
-///   - EINSUMS_SIMD_LADDER(fn) expands to the five slots select() takes, one per rung, with nullptr
-///     for a rung that was not built.
+///   - STRIPES_LADDER(fn) expands to the five slots select() takes, one per rung, with nullptr
+///     for a rung that was not built, followed by what the sme copy needs besides SME (see
+///     stripes::SmeRungRequires).
 ///   - select<Fn>(...) returns the slot of the rung selected_arch() chose: the best the CPU and the
-///     operating system support, lowered by --einsums:simd:arch if given.
+///     operating system support, lowered by STRIPES_ARCH if given.
 ///
 /// Resolve the pointer once and keep it, here in a function-local static. The choice cannot
 /// change while the program runs, and resolving it per call would put a lookup in the hot path.
 ///
-/// Try it on an x86 machine with --einsums:simd:arch=baseline, v2, v3 or v4 and watch the width
+/// Try it on an x86 machine with STRIPES_ARCH=baseline, v2, v3 or v4 and watch the width
 /// change. On other architectures the ladder has one rung, arch_native.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/RungLadder.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
-
+#include <Stripes/RungLadder.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -43,7 +42,7 @@ namespace simd_example {
     float sum_of_squares(float const *x, std::size_t n);                                                                                   \
     int   float_lanes();                                                                                                                   \
     }
-EINSUMS_SIMD_FOR_EACH_BUILT_RUNG(SIMD_EXAMPLE_DECLARE_RUNG)
+STRIPES_FOR_EACH_BUILT_RUNG(SIMD_EXAMPLE_DECLARE_RUNG)
 #undef SIMD_EXAMPLE_DECLARE_RUNG
 
 using SumOfSquaresFn = float (*)(float const *, std::size_t);
@@ -51,19 +50,19 @@ using FloatLanesFn   = int (*)();
 
 /// The copy of sum_of_squares for the selected rung, resolved on first use.
 float sum_of_squares(float const *x, std::size_t n) {
-    static SumOfSquaresFn const kernel = einsums::simd::select<SumOfSquaresFn>(EINSUMS_SIMD_LADDER(sum_of_squares));
+    static SumOfSquaresFn const kernel = stripes::select<SumOfSquaresFn>(STRIPES_LADDER(sum_of_squares));
     return kernel(x, n);
 }
 
 int float_lanes() {
-    static FloatLanesFn const kernel = einsums::simd::select<FloatLanesFn>(EINSUMS_SIMD_LADDER(float_lanes));
+    static FloatLanesFn const kernel = stripes::select<FloatLanesFn>(STRIPES_LADDER(float_lanes));
     return kernel();
 }
 
 } // namespace simd_example
 
-int einsums_main() {
-    using namespace einsums::simd;
+int main() {
+    using namespace stripes;
     std::cout << "Selected rung: " << to_string(selected_arch()) << "; the kernel's Vec<float> holds " << simd_example::float_lanes()
               << " floats.\n";
 
@@ -77,8 +76,4 @@ int einsums_main() {
     std::cout << "sum of squares: " << got << " (exact " << expect << ")\n";
     // Quarter-integer squares below 36 in float: every partial sum is exact to 2^24.
     return std::abs(static_cast<double>(got) - expect) < 1e-6 * expect ? 0 : 1;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

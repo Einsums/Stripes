@@ -16,19 +16,17 @@
 /// Elsewhere dot_product_us has no definition and a call fails to link, so the vector path below
 /// is compiled only under the conditions that provide it, and the program says when it is absent.
 
-#include <Einsums/Runtime.hpp>
-#include <Einsums/SIMD/Convert.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Reduce.hpp>
-
+#include <Stripes/Convert.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Reduce.hpp>
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <vector>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 #if defined(__ARM_FEATURE_MATMUL_INT8) || (defined(__AVX512VNNI__) && defined(__AVX512F__) && defined(__AVX512VL__)) ||                    \
     (defined(__AVXVNNI__) && defined(__AVX2__))
@@ -72,7 +70,7 @@ void qgemv(std::size_t rows, std::size_t cols, std::int8_t const *w, std::uint8_
 
 } // namespace
 
-int einsums_main() {
+int main() {
     std::size_t const         rows = 8, cols = std::size_t{4} * lanes<std::uint8_t>;
     std::vector<std::int8_t>  w(rows * cols);
     std::vector<std::uint8_t> x(cols);
@@ -99,8 +97,4 @@ int einsums_main() {
         failures += y[r] != expect; // the integer sum is exact, so the float results match exactly
     }
     return failures ? 1 : 0;
-}
-
-int main(int argc, char **argv) {
-    return einsums::start(einsums_main, argc, argv);
 }

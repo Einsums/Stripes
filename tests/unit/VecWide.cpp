@@ -9,8 +9,7 @@
 // interpolation sharing one index vector. The elementwise operations are checked against the scalar
 // instantiation in GenericKernel.
 
-#include <Einsums/SIMD/Generic.hpp>
-
+#include <Stripes/Generic.hpp>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -25,7 +24,7 @@
 #    include <unistd.h>
 #endif
 
-namespace simd = einsums::simd;
+namespace simd = stripes;
 
 namespace {
 

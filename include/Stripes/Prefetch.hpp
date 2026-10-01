@@ -5,20 +5,18 @@
 
 #pragma once
 
-#include <Einsums/Config/ForceInline.hpp>
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Partial.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/Operations.hpp>
+#include <Stripes/Partial.hpp>
+#include <Stripes/Vec.hpp>
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
-EINSUMS_NAMESPACE_BEGIN(simd)
-EINSUMS_SIMD_ISA_NAMESPACE_BEGIN()
+STRIPES_NAMESPACE_BEGIN()
+STRIPES_ISA_NAMESPACE_BEGIN()
 
 // ===========================================================================
 // Prefetch hints
@@ -36,7 +34,7 @@ enum class PrefetchHint { T0, T1, T2, NTA, WriteT0, WriteT1, WriteT2, WriteStrea
 // ===========================================================================
 
 template <PrefetchHint Hint = PrefetchHint::T2>
-EINSUMS_FORCEINLINE void prefetch(void const *ptr) {
+STRIPES_FORCEINLINE void prefetch(void const *ptr) {
 #if defined(__SSE2__) || defined(__AVX__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
     if constexpr (Hint == PrefetchHint::T0)
         _mm_prefetch(reinterpret_cast<char const *>(ptr), _MM_HINT_T0);
@@ -87,7 +85,7 @@ EINSUMS_FORCEINLINE void prefetch(void const *ptr) {
 
 /// Prefetch N consecutive rows (pattern used by HPTT micro_kernel).
 template <typename T, PrefetchHint Hint = PrefetchHint::T2>
-EINSUMS_FORCEINLINE void prefetch_rows(T const *base, size_t stride, int nrows = Vec<T>::lanes) {
+STRIPES_FORCEINLINE void prefetch_rows(T const *base, size_t stride, int nrows = Vec<T>::lanes) {
     for (int i = 0; i < nrows; ++i)
         prefetch<Hint>(base + i * stride);
 }
@@ -97,33 +95,33 @@ EINSUMS_FORCEINLINE void prefetch_rows(T const *base, size_t stride, int nrows =
 // ===========================================================================
 
 template <typename T>
-EINSUMS_FORCEINLINE void stream_store(T *ptr, Vec<T> v);
+STRIPES_FORCEINLINE void stream_store(T *ptr, Vec<T> v);
 
 #if defined(__AVX512F__) && defined(__AVX512VL__)
 template <>
-EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
     _mm512_stream_ps(p, v.reg);
 }
 template <>
-EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
     _mm512_stream_pd(p, v.reg);
 }
 #elif defined(__AVX__)
 template <>
-EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
     _mm256_stream_ps(p, v.reg);
 }
 template <>
-EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
     _mm256_stream_pd(p, v.reg);
 }
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <>
-EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
     _mm_stream_ps(p, v.reg);
 }
 template <>
-EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
     _mm_stream_pd(p, v.reg);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
@@ -133,7 +131,7 @@ EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
 // for write-only patterns). On compilers that don't recognize the
 // builtin, fall back to a plain SIMD store.
 template <>
-EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
 #    if defined(__clang__) || __has_builtin(__builtin_nontemporal_store)
     __builtin_nontemporal_store(v.reg, reinterpret_cast<float32x4_t *>(p));
 #    else
@@ -141,7 +139,7 @@ EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
 #    endif
 }
 template <>
-EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
 #    if defined(__clang__) || __has_builtin(__builtin_nontemporal_store)
     __builtin_nontemporal_store(v.reg, reinterpret_cast<float64x2_t *>(p));
 #    else
@@ -150,7 +148,7 @@ EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
 }
 #    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
 template <>
-EINSUMS_FORCEINLINE void stream_store(half_t *p, Vec<half_t> v) {
+STRIPES_FORCEINLINE void stream_store(half_t *p, Vec<half_t> v) {
 #        if defined(__clang__) || __has_builtin(__builtin_nontemporal_store)
     __builtin_nontemporal_store(v.reg, reinterpret_cast<float16x8_t *>(p));
 #        else
@@ -160,7 +158,7 @@ EINSUMS_FORCEINLINE void stream_store(half_t *p, Vec<half_t> v) {
 #    endif
 #    if defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
 template <>
-EINSUMS_FORCEINLINE void stream_store(bfloat16_t *p, Vec<bfloat16_t> v) {
+STRIPES_FORCEINLINE void stream_store(bfloat16_t *p, Vec<bfloat16_t> v) {
 #        if defined(__clang__) || __has_builtin(__builtin_nontemporal_store)
     __builtin_nontemporal_store(v.reg, reinterpret_cast<bfloat16x8_t *>(p));
 #        else
@@ -170,11 +168,11 @@ EINSUMS_FORCEINLINE void stream_store(bfloat16_t *p, Vec<bfloat16_t> v) {
 #    endif
 #else
 template <>
-EINSUMS_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
     *p = v.reg;
 }
 template <>
-EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
     *p = v.reg;
 }
 #endif
@@ -195,7 +193,7 @@ EINSUMS_FORCEINLINE void stream_store(double *p, Vec<double> v) {
 /// release fence here is the same one any handover would need and costs
 /// nothing extra. Everywhere else the streaming store was a plain store and
 /// this is a compiler barrier.
-EINSUMS_FORCEINLINE void stream_fence() {
+STRIPES_FORCEINLINE void stream_fence() {
 #if defined(__SSE2__) || defined(__AVX__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
     _mm_sfence();
 #else
@@ -221,7 +219,7 @@ EINSUMS_FORCEINLINE void stream_fence() {
 // ===========================================================================
 
 template <typename T, typename Produce>
-EINSUMS_FORCEINLINE void stream_store_span(T *dst, std::size_t n, Produce &&produce) {
+STRIPES_FORCEINLINE void stream_store_span(T *dst, std::size_t n, Produce &&produce) {
     constexpr std::size_t L = static_cast<std::size_t>(Vec<T>::lanes);
     std::size_t           i = 0;
     if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
@@ -246,5 +244,5 @@ EINSUMS_FORCEINLINE void stream_store_span(T *dst, std::size_t n, Produce &&prod
     }
 }
 
-EINSUMS_SIMD_ISA_NAMESPACE_END()
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_ISA_NAMESPACE_END()
+STRIPES_NAMESPACE_END()

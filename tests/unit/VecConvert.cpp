@@ -7,9 +7,8 @@
 // double, the 16-bit floats, and bitcast. Integer to float rounds to nearest, float to integer
 // truncates toward zero, and widening is exact.
 
-#include <Einsums/SIMD/Convert.hpp>
-#include <Einsums/SIMD/Operations.hpp>
-
+#include <Stripes/Convert.hpp>
+#include <Stripes/Operations.hpp>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -18,7 +17,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEST_CASE("convert<float> of int32 rounds to nearest, ties to even", "[simd][convert]") {
     constexpr int L = Vec<int32_t>::lanes;

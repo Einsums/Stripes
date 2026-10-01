@@ -3,33 +3,24 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root for license information.
 //----------------------------------------------------------------------------------------------
 
-#include <Einsums/Config/Namespace.hpp>
-#include <Einsums/Logging.hpp>
-#include <Einsums/SIMD/Options.hpp>
-#include <Einsums/SIMD/RuntimeFeatures.hpp>
-
+#include <Stripes/Config.hpp>
+#include <Stripes/RuntimeFeatures.hpp>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
 #include <span>
 #include <string>
 
-// What the sme rung's compiler flags switch on besides SME, probed at
-// configure time (see einsums_simd_rung_enables in
-// Einsums_AddSIMDDispatch.cmake). Absent means the flags enable neither.
-#if !defined(EINSUMS_SIMD_SME_RUNG_ENABLES_SVE)
-#    define EINSUMS_SIMD_SME_RUNG_ENABLES_SVE 0
-#endif
-#if !defined(EINSUMS_SIMD_SME_RUNG_ENABLES_SVE2)
-#    define EINSUMS_SIMD_SME_RUNG_ENABLES_SVE2 0
-#endif
-
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#    define EINSUMS_SIMD_DETECT_X86 1
+#    define STRIPES_DETECT_X86 1
 #    if defined(_MSC_VER)
 #        include <intrin.h>
 #    else
 #        include <cpuid.h>
 #    endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#    define EINSUMS_SIMD_DETECT_AARCH64 1
+#    define STRIPES_DETECT_AARCH64 1
 #    if defined(__APPLE__)
 #        include <sys/sysctl.h>
 #    elif defined(__linux__)
@@ -37,11 +28,11 @@
 #    endif
 #endif
 
-EINSUMS_NAMESPACE_BEGIN(simd)
+STRIPES_NAMESPACE_BEGIN()
 
 namespace {
 
-#if defined(EINSUMS_SIMD_DETECT_X86)
+#if defined(STRIPES_DETECT_X86)
 
 struct CpuidRegs {
     std::uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
@@ -146,7 +137,7 @@ CpuFeatures detect() {
     return f;
 }
 
-#elif defined(EINSUMS_SIMD_DETECT_AARCH64)
+#elif defined(STRIPES_DETECT_AARCH64)
 
 #    if defined(__APPLE__)
 
@@ -337,17 +328,10 @@ bool supports(CpuFeatures const &f, InstructionSet set) {
         return f.arch == Architecture::X86 && v3;
     case InstructionSet::V4:
         return f.arch == Architecture::X86 && v4;
-    case InstructionSet::Sme: {
-        // The rung's TUs are compiled with +sme2+sme-f64f64 and may use any of
-        // it anywhere. Some compilers also switch on non-streaming SVE/SVE2 for
-        // those flags (GCC before 15 makes +sme imply +sve2), and then the
-        // autovectorizer may emit it outside streaming mode, which faults on a
-        // core with SME but no SVE (Apple M4). The build probes the rung's
-        // flags and tells this TU what they imply.
-        bool const needs_sve  = EINSUMS_SIMD_SME_RUNG_ENABLES_SVE != 0;
-        bool const needs_sve2 = EINSUMS_SIMD_SME_RUNG_ENABLES_SVE2 != 0;
-        return f.arch == Architecture::Aarch64 && f.sme && f.sme2 && f.sme_f64f64 && (!needs_sve || f.sve) && (!needs_sve2 || f.sve2);
-    }
+    case InstructionSet::Sme:
+        // The rung's own instructions. What its code needs besides them depends on the compiler that
+        // built that code, so select() checks it (see SmeRungRequires).
+        return f.arch == Architecture::Aarch64 && f.sme && f.sme2 && f.sme_f64f64;
     }
     return false;
 }
@@ -361,6 +345,39 @@ InstructionSet highest_supported(CpuFeatures const &f) {
     return InstructionSet::Baseline;
 }
 
+namespace {
+
+void default_message_handler(MessageLevel level, std::string_view message) {
+    if (level == MessageLevel::Warning) {
+        std::fprintf(stderr, "stripes: %.*s\n", static_cast<int>(message.size()), message.data());
+    }
+}
+
+std::atomic<MessageHandler> message_handler{&default_message_handler};
+
+void emit(MessageLevel level, std::string const &message) {
+    message_handler.load(std::memory_order_acquire)(level, message);
+}
+
+/// The set_arch_override() value, read once by selected_arch()'s initializer.
+std::mutex        override_mutex;
+std::string       override_value;
+bool              override_set = false;
+std::atomic<bool> arch_selected{false};
+
+} // namespace
+
+void set_message_handler(MessageHandler handler) noexcept {
+    message_handler.store(handler != nullptr ? handler : &default_message_handler, std::memory_order_release);
+}
+
+bool set_arch_override(std::string_view name) {
+    std::lock_guard<std::mutex> const lock(override_mutex);
+    override_value = std::string(name);
+    override_set   = true;
+    return !arch_selected.load(std::memory_order_acquire);
+}
+
 InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::string_view> override_name) {
     InstructionSet const ceiling = highest_supported(features);
 
@@ -370,9 +387,9 @@ InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::stri
 
     auto const requested = parse_instruction_set(*override_name);
     if (!requested.has_value()) {
-        EINSUMS_LOG_WARN("--einsums:simd:arch=\"{}\" is not a recognized instruction-set name; ignoring the override. "
-                         "Accepted: baseline, v2, v3, v4, sme (aliases: sse2, sse4.2, avx2, avx512, sme2).",
-                         *override_name);
+        emit(MessageLevel::Warning, "STRIPES_ARCH=\"" + std::string(*override_name) +
+                                        "\" is not a recognized instruction-set name; ignoring the override. "
+                                        "Accepted: baseline, v2, v3, v4, sme (aliases: sse2, sse4.2, avx2, avx512, sme2).");
         return ceiling;
     }
 
@@ -387,29 +404,39 @@ InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::stri
     for (InstructionSet const set : order) {
         found = found || set == *requested;
         if (found && supports(features, set)) {
-            EINSUMS_LOG_WARN("--einsums:simd:arch requests {} but this CPU/OS cannot run it; using {}.", to_string(*requested),
-                             to_string(set));
+            emit(MessageLevel::Warning, std::string("STRIPES_ARCH requests ") + to_string(*requested) +
+                                            " but this CPU/OS cannot run it; using " + to_string(set) + ".");
             return set;
         }
     }
 
-    EINSUMS_LOG_WARN("--einsums:simd:arch requests {}, which is not a rung of this CPU's architecture; ignoring the override and using {}.",
-                     to_string(*requested), to_string(ceiling));
+    emit(MessageLevel::Warning, std::string("STRIPES_ARCH requests ") + to_string(*requested) +
+                                    ", which is not a rung of this CPU's architecture; ignoring the override and using " +
+                                    to_string(ceiling) + ".");
     return ceiling;
 }
 
 InstructionSet selected_arch() {
     static InstructionSet const selected = [] {
-        std::string const               requested = config::get(option::SimdArch);
+        std::string requested;
+        {
+            std::lock_guard<std::mutex> const lock(override_mutex);
+            if (override_set) {
+                requested = override_value;
+            } else if (char const *env = std::getenv("STRIPES_ARCH"); env != nullptr) {
+                requested = env;
+            }
+            arch_selected.store(true, std::memory_order_release);
+        }
         std::optional<std::string_view> override_name;
         if (!requested.empty()) {
             override_name = requested;
         }
         InstructionSet const arch = resolve_arch(cpu_features(), override_name);
-        EINSUMS_LOG_DEBUG("SIMD dispatch rung: {}", to_string(arch));
+        emit(MessageLevel::Debug, std::string("dispatch rung: ") + to_string(arch));
         return arch;
     }();
     return selected;
 }
 
-EINSUMS_NAMESPACE_END(simd)
+STRIPES_NAMESPACE_END()

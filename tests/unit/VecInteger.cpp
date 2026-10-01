@@ -8,10 +8,9 @@
 // element-wise arithmetic (add/sub/bitwise/shifts/compare-eq) lands in
 // follow-up commits and gets its own test cases here.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Vec.hpp>
 #include <cstdint>
 #include <limits>
 #include <type_traits>
@@ -19,7 +18,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 TEMPLATE_TEST_CASE("integer Vec lane count matches native register width", "[simd][integer]", int32_t, uint32_t, int64_t, uint64_t) {
     // Lane count derives from native_bits and sizeof(TestType); same rule

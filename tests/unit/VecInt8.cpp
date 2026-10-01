@@ -11,16 +11,15 @@
 // builds), `dot_product_us` only runs when either FEAT_I8MM (M3+, needs
 // `-mcpu=apple-m3` or later) or AVX-VNNI / AVX-512 VNNI is on.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Vec.hpp>
 #include <cstdint>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 // ─── Round-trip ────────────────────────────────────────────────────────────
 

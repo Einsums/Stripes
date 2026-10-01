@@ -7,8 +7,7 @@
 // bit conversions and mask_cast, against scalar references. to_vec must give exactly all-ones or
 // zero per lane, so masks are compared bit for bit.
 
-#include <Einsums/SIMD/Operations.hpp>
-
+#include <Stripes/Operations.hpp>
 #include <bit>
 #include <cstdint>
 #include <limits>
@@ -17,7 +16,7 @@
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 namespace {
 

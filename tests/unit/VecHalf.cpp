@@ -16,15 +16,14 @@
 // conda toolchain build for Apple Silicon the BF16 tests stay disabled
 // until the user adds the appropriate -mcpu flag.
 
-#include <Einsums/SIMD/Operations.hpp>
-#include <Einsums/SIMD/Platform.hpp>
-#include <Einsums/SIMD/Vec.hpp>
-
+#include <Stripes/Operations.hpp>
+#include <Stripes/Platform.hpp>
+#include <Stripes/Vec.hpp>
 #include <cmath>
 
 #include <catch2/catch_all.hpp>
 
-using namespace einsums::simd;
+using namespace stripes;
 
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) || defined(__AVX512FP16__)
 
