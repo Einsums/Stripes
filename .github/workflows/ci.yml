@@ -27,6 +27,40 @@ jobs:
       - run: pip install pre-commit
       - run: pre-commit run --all-files --show-diff-on-failure
 
+  # conda-forge's compilers, the toolchain Einsums builds with and the conda-forge package will.
+  conda:
+    name: conda (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          environment-file: devtools/conda-envs/environment.yml
+          activate-environment: stripes-dev
+          conda-remove-defaults: "true"
+      # The compiler packages do not all export CXX on activation, and the runner has compilers of its
+      # own on PATH, so name the environment's explicitly and fail if it is missing.
+      - name: Select the conda compiler
+        run: |
+          cxx=$(ls "$CONDA_PREFIX"/bin/*-conda-linux-gnu-c++ "$CONDA_PREFIX"/bin/*-apple-darwin*-clang++ 2>/dev/null | head -n 1)
+          test -n "$cxx" || { echo "::error::no conda-forge C++ compiler in $CONDA_PREFIX/bin"; exit 1; }
+          "$cxx" --version
+          echo "STRIPES_CONDA_CXX=$cxx" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER="$STRIPES_CONDA_CXX"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
   # Every rung on the runner's own CPU: the baseline and the v2/v3 copies of each suite (v4 too
   # where the runner has AVX-512), the examples, and the per-rung symbol check.
   linux:

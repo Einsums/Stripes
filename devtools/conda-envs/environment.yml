@@ -1,0 +1,12 @@
+# conda-forge's compilers and build tools: the toolchain Einsums and the conda-forge package build
+# with. CI's conda legs use it; locally:
+#   conda env create -f devtools/conda-envs/environment.yml && conda activate stripes-dev
+name: stripes-dev
+channels:
+  - conda-forge
+dependencies:
+  - cxx-compiler
+  - cmake >=3.24
+  - ninja
+  - catch2 >=3
+  - pre-commit
