@@ -59,9 +59,9 @@ TEST_CASE("Vec<T> is the native vector, and wide lane counts are whole registers
     STATIC_CHECK(sizeof(simd::Vec<double, 4 * simd::lanes<double>>) == 4 * sizeof(simd::Vec<double>));
     STATIC_CHECK(valid_vec<float, 3 * LF>);
     STATIC_CHECK_FALSE(valid_vec<float, 0>);
-    if constexpr (LF > 1) {
-        STATIC_CHECK_FALSE(valid_vec<float, LF + 1>);
-    }
+    // With one lane every count is whole registers. In the condition, not an if constexpr around
+    // it: outside a template both branches are checked.
+    STATIC_CHECK((LF == 1 || !valid_vec<float, LF + 1>));
 }
 
 TEST_CASE("convert moves the same lanes between float and double", "[simd][wide][convert]") {

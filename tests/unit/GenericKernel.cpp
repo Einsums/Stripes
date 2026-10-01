@@ -290,9 +290,8 @@ TEST_CASE("the generic layer's overloads resolve as designed", "[simd][generic]"
     STATIC_CHECK(multipliable<simd::Vec<double>, int>);
     STATIC_CHECK(multipliable<long, simd::Vec<float>>);
     STATIC_CHECK(multipliable<simd::Vec<float>, float>);
-    if constexpr (simd::native_bits > 0) {
-        STATIC_CHECK(!multipliable<simd::Vec<float>, double>);
-    }
+    // In the condition, not an if constexpr around it: outside a template both branches are checked.
+    STATIC_CHECK((simd::native_bits == 0 || !multipliable<simd::Vec<float>, double>));
 
     // Under using namespace, the C library still answers for scalars: the scalar overloads are
     // constrained templates, which never beat a plain function.

@@ -329,5 +329,8 @@ TEMPLATE_TEST_CASE("complex_reduce_add sums real and imaginary parts apart", "[s
         in[i] = C(static_cast<TestType>(i + 1), static_cast<TestType>(-10 * (i + 1)));
         expected += in[i];
     }
-    CHECK(complex_reduce_add(complex_loadu(in)) == expected);
+    // The scalar build's one-lane register holds no whole complex value, and has nothing to reduce.
+    if constexpr (N > 0) {
+        CHECK(complex_reduce_add(complex_loadu(in)) == expected);
+    }
 }
