@@ -285,7 +285,11 @@ the scalar instantiation is an exact reference for the vector one, provided the
 compiler does not fuse a kernel's own separate multiply and add into an FMA.
 GCC does so by default (``-ffp-contract=fast``), even in intrinsic code and
 differently in each instantiation, so compile a bit-for-bit comparison with
-``-ffp-contract=off``. In particular, ``min`` is
+``-ffp-contract=off``. A 32-bit x86 build without SSE computes on the x87
+unit, which keeps intermediates at 80 bits until they are stored; compile it
+with ``-fexcess-precision=standard`` (GCC) so values are rounded at every
+assignment and cast, which ``exp`` and ``erf`` rely on for their exact results
+and special values. In particular, ``min`` is
 ``a < b ? a : b``, the fused forms round once exactly where the vector forms
 do, and a comparison returns ``bool``. Call them qualified, as
 ``simd::fmadd``: argument-dependent lookup finds nothing for ``double``. They

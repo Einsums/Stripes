@@ -133,7 +133,10 @@ jobs:
       - name: Test
         run: ctest --test-dir build -j4
 
-  # The scalar fallback: 32-bit x86 with no SSE at all, so every header takes its last branch.
+  # The scalar fallback: 32-bit x86 with no SSE at all, so every header takes its last branch. The
+  # x87 unit keeps intermediates at 80 bits until they are stored, so a float that overflowed still
+  # compares as finite; -fexcess-precision=standard rounds at every assignment and cast, as C++
+  # requires and as the bit-exact results of exp and erf assume.
   scalar:
     runs-on: ubuntu-24.04
     steps:
@@ -142,7 +145,7 @@ jobs:
       - name: Configure
         run: >
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=g++-14
-          "-DCMAKE_CXX_FLAGS=-m32 -march=i686 -mno-sse -mfpmath=387" -DCMAKE_EXE_LINKER_FLAGS=-m32
+          "-DCMAKE_CXX_FLAGS=-m32 -march=i686 -mno-sse -mfpmath=387 -fexcess-precision=standard" -DCMAKE_EXE_LINKER_FLAGS=-m32
           -DCMAKE_SHARED_LINKER_FLAGS=-m32 -DSTRIPES_WITH_DISPATCH=OFF
       - name: Build
         run: cmake --build build

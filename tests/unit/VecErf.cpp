@@ -16,6 +16,7 @@
 
 #include <Stripes/Math.hpp>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <type_traits>
 
@@ -74,7 +75,11 @@ void check_range(simd::scalar_t<V> lo, simd::scalar_t<V> hi, long n, F f, Ref re
             double const e = ulp_error<T>(y[j], ref(x[j]));
             if (e > worst) {
                 worst = e;
-                INFO("x = " << x[j] << ", got " << y[j]);
+                // In full, so a failure says whether the result or the reference is off: where long
+                // double is no wider than double (macOS on arm64, Windows) the reference is the
+                // platform's own double erf.
+                INFO(std::setprecision(17) << "x = " << x[j] << ", got " << y[j] << ", reference " << std::setprecision(21) << ref(x[j])
+                                           << " (long double has " << std::numeric_limits<long double>::digits << " bits)");
                 CHECK(e <= bound);
             }
         }

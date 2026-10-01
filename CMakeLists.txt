@@ -150,6 +150,11 @@ endif()
 if(STRIPES_WITH_TESTS OR STRIPES_WITH_BENCHMARKS)
   find_package(Catch2 3 QUIET)
   if(NOT Catch2_FOUND)
+    # Catch2 compiles its string_view support only at C++17 and above, and the tests use it, so the
+    # fetched copy is built at the tests' standard rather than the compiler's default (C++14 under
+    # clang-cl, which left StringMaker<std::string_view> undefined at link time).
+    set(CMAKE_CXX_STANDARD 20)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
     include(FetchContent)
     FetchContent_Declare(
       Catch2

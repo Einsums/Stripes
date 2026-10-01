@@ -27,9 +27,13 @@ void conj_axpy(std::size_t n, std::complex<double> a, std::complex<double> const
     CVec<double> const    va = complex_broadcast(a);
 
     std::size_t i = 0;
-    for (; i + CL <= n; i += CL) {
-        CVec<double> const prod = complex_mul(va, conjugate(complex_loadu(x + i)));
-        complex_storeu(y + i, complex_add(prod, complex_loadu(y + i)));
+    // A register too narrow for one complex value (the scalar build's) has no complex lanes, and a
+    // loop stepping by zero would never end; the scalar loop then does it all.
+    if constexpr (CL > 0) {
+        for (; i + CL <= n; i += CL) {
+            CVec<double> const prod = complex_mul(va, conjugate(complex_loadu(x + i)));
+            complex_storeu(y + i, complex_add(prod, complex_loadu(y + i)));
+        }
     }
     for (; i < n; ++i) {
         y[i] += a * std::conj(x[i]);
