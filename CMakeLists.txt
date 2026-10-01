@@ -14,6 +14,12 @@ project(
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+# Windows finds a DLL beside the executable that loads it, so put the library, the tests and the
+# examples in one directory there.
+if(WIN32 AND PROJECT_IS_TOP_LEVEL AND NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 

@@ -1,0 +1,208 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: "1"
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pre-commit
+      - run: pre-commit run --all-files --show-diff-on-failure
+
+  # Every rung on the runner's own CPU: the baseline and the v2/v3 copies of each suite (v4 too
+  # where the runner has AVX-512), the examples, and the per-rung symbol check.
+  linux:
+    name: linux (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++-14
+          - compiler: clang
+            cxx: clang++-18
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
+  # The v4 copies on an emulated Sapphire Rapids. SDE emulates CPUID and XGETBV and follows exec,
+  # so cpu_features() and the rung guard see a v4 host and nothing may be Skipped.
+  sde:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install Intel SDE
+        env:
+          SDE_TARBALL: sde-external-10.13.1-2026-07-28-lin.tar.xz
+          # Intel's published SHA-256 for this tarball.
+          SDE_SHA256: 94e97d623fec54385686e1e7ba65ebc9941748c05ee451423948334892bf2b50
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$SDE_TARBALL" \
+            "https://github.com/petarpetrovt/setup-sde/releases/download/binaries/$SDE_TARBALL"
+          echo "$SDE_SHA256  $RUNNER_TEMP/$SDE_TARBALL" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sde"
+          tar -xJf "$RUNNER_TEMP/$SDE_TARBALL" -C "$RUNNER_TEMP/sde" --strip-components=1
+          echo "SDE64=$RUNNER_TEMP/sde/sde64" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++-18
+      - name: Build
+        run: cmake --build build
+      - name: Test under SDE
+        run: |
+          set -o pipefail
+          "$SDE64" -spr -- ctest --test-dir build -j4 --timeout 3600 | tee sde-ctest.log
+          # A Skipped test here means the guard did not see the emulated CPU.
+          if grep -q "did not run" sde-ctest.log; then
+            echo "::error::tests were skipped under SDE"
+            exit 1
+          fi
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++-18
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+          "-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
+  # The scalar fallback: 32-bit x86 with no SSE at all, so every header takes its last branch.
+  scalar:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build g++-14-multilib
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=g++-14
+          "-DCMAKE_CXX_FLAGS=-m32 -march=i686 -mno-sse -mfpmath=387" -DCMAKE_EXE_LINKER_FLAGS=-m32
+          -DCMAKE_SHARED_LINKER_FLAGS=-m32 -DSTRIPES_WITH_DISPATCH=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
+  # NEON on real aarch64 hardware (Neoverse, with SVE2 and no SME: the sme copies are Skipped).
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=g++-14
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
+  # The sme rung on an emulated core with SVE, SVE2, SME and SME2 (QEMU's -cpu max). binfmt_misc
+  # hands every aarch64 binary to qemu-aarch64, including the test the rung guard execs, and the
+  # QEMU_* variables reach it from the environment.
+  qemu-sme:
+    runs-on: ubuntu-24.04
+    env:
+      QEMU_CPU: max
+      QEMU_LD_PREFIX: /usr/aarch64-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the cross toolchain and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14-aarch64-linux-gnu qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64 || true
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake -DSTRIPES_CROSS_GCC_VERSION=-14
+      - name: Build
+        run: cmake --build build
+      - name: Check that the emulated CPU has the sme rung
+        run: |
+          ./build/examples/example_PlatformInfo | tee platform.log
+          ./build/stripes_rung_guard sme /bin/true || { echo "::error::the emulated CPU cannot run the sme rung"; exit 1; }
+      - name: Test
+        run: |
+          set -o pipefail
+          ctest --test-dir build -j4 --timeout 3600 | tee qemu-ctest.log
+          # Only the x86 rungs exist nowhere here; an sme test that did not run means the gate or the
+          # guard turned the emulated SME away.
+          if grep -E "\.sme .*Skipped" qemu-ctest.log; then
+            echo "::error::sme rung tests were skipped under QEMU"
+            exit 1
+          fi
+
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install ninja
+      - name: Configure
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+      - name: Test
+        run: ctest --test-dir build -C RelWithDebInfo -j4
+
+  # Install, then build tests/package against the install: find_package, a dispatched kernel and
+  # its rung tests, as a library using Stripes would.
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Build and install
+        run: |
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTRIPES_WITH_TESTS=OFF \
+            -DSTRIPES_WITH_EXAMPLES=OFF -DSTRIPES_WITH_BENCHMARKS=OFF
+          cmake --build build
+          cmake --install build --prefix "$RUNNER_TEMP/stripes"
+      - name: Build the consumer
+        run: |
+          cmake -S tests/package -B package-build -GNinja -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/stripes"
+          cmake --build package-build
+      - name: Test the consumer
+        run: ctest --test-dir package-build

@@ -15,7 +15,8 @@
 // If the host CPU cannot execute <rung>, exits with 77 - registered as the
 // test's SKIP_RETURN_CODE - so ctest reports an honest "Skipped" instead of
 // silently rerunning another rung (STRIPES_ARCH replaces an unsupported
-// rung with a supported one). Otherwise replaces itself with <command>.
+// rung with a supported one). Otherwise runs <command> in its place (on Windows, as a
+// child it waits for).
 
 #include <Stripes/RuntimeFeatures.hpp>
 #include <cstdio>
@@ -63,10 +64,15 @@ int main(int argc, char **argv) {
 
     char **const command = argv + first + 1;
 #if defined(_WIN32)
-    auto const rc = _execv(command[0], command);
+    // Windows has no exec: _execv starts a new process and ends this one at once, so ctest would see
+    // the guard exit before the test had run, and pass it. Wait for the test and return its status.
+    auto const rc = _spawnv(_P_WAIT, command[0], command);
+    if (rc != -1) {
+        return static_cast<int>(rc);
+    }
 #else
     auto const rc = execv(command[0], command);
 #endif
-    std::fprintf(stderr, "stripes_rung_guard: failed to exec '%s' (rc=%d)\n", command[0], static_cast<int>(rc));
+    std::fprintf(stderr, "stripes_rung_guard: failed to run '%s' (rc=%d)\n", command[0], static_cast<int>(rc));
     return 2;
 }
