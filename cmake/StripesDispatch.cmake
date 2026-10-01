@@ -151,9 +151,12 @@ function(stripes_rung_flags rung out_flags out_ordinal out_ok context)
       message(STATUS "${context}: MSVC cl has no SME flag; dropping the sme rung")
       set(_ok FALSE)
     elseif(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang") # clang-cl
-      set(_flags "/clang:-march=armv8.6-a+sme2+sme-f64f64")
+      set(_flags "/clang:-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64")
     else() # GCC/Clang/AppleClang
-      set(_flags "-march=armv8.6-a+sme2+sme-f64f64")
+      # SME requires FP16 and BF16, so naming them costs no core. AppleClang 17 needs them named:
+      # its +sme2 defines __ARM_FEATURE_FP16_VECTOR_ARITHMETIC without enabling fullfp16 for code
+      # generation, so the half_t operations the macro selects failed to compile on the sme rung.
+      set(_flags "-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64")
     endif()
   else()
     message(FATAL_ERROR "stripes_rung_flags: unknown rung '${rung}' (expected baseline/native/v2/v3/v4/sme)")

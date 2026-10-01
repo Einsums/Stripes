@@ -169,43 +169,77 @@ CpuFeatures detect() {
 
 #    elif defined(__linux__)
 
+// The kernel's HWCAP bits (arch/arm64/include/uapi/asm/hwcap.h), which are ABI. They are spelled out
+// rather than taken from <sys/auxv.h> because a C library older than the feature leaves its macro
+// undefined, and testing for the macro would then report the feature absent on every machine, with
+// nothing to say so: a build against glibc 2.35 would never select the sme rung. Where the header
+// does define one, it must agree.
+namespace hwcap_bit {
+constexpr unsigned long asimdhp = 1UL << 10;
+constexpr unsigned long asimddp = 1UL << 20;
+constexpr unsigned long sve     = 1UL << 22;
+} // namespace hwcap_bit
+namespace hwcap2_bit {
+constexpr unsigned long sve2       = 1UL << 1;
+constexpr unsigned long i8mm       = 1UL << 13;
+constexpr unsigned long bf16       = 1UL << 14;
+constexpr unsigned long sme        = 1UL << 23;
+constexpr unsigned long sme_f64f64 = 1UL << 25;
+constexpr unsigned long sme2       = 1UL << 37;
+} // namespace hwcap2_bit
+#        if defined(HWCAP_ASIMDHP)
+static_assert(HWCAP_ASIMDHP == hwcap_bit::asimdhp);
+#        endif
+#        if defined(HWCAP_ASIMDDP)
+static_assert(HWCAP_ASIMDDP == hwcap_bit::asimddp);
+#        endif
+#        if defined(HWCAP_SVE)
+static_assert(HWCAP_SVE == hwcap_bit::sve);
+#        endif
+#        if defined(HWCAP2_SVE2)
+static_assert(HWCAP2_SVE2 == hwcap2_bit::sve2);
+#        endif
+#        if defined(HWCAP2_I8MM)
+static_assert(HWCAP2_I8MM == hwcap2_bit::i8mm);
+#        endif
+#        if defined(HWCAP2_BF16)
+static_assert(HWCAP2_BF16 == hwcap2_bit::bf16);
+#        endif
+#        if defined(HWCAP2_SME)
+static_assert(HWCAP2_SME == hwcap2_bit::sme);
+#        endif
+#        if defined(HWCAP2_SME_F64F64)
+static_assert(HWCAP2_SME_F64F64 == hwcap2_bit::sme_f64f64);
+#        endif
+#        if defined(HWCAP2_SME2)
+static_assert(HWCAP2_SME2 == hwcap2_bit::sme2);
+#        endif
+
+/// AT_HWCAP2 is 26 in the kernel ABI; <elf.h> lacks it only in very old C libraries.
+#        if defined(AT_HWCAP2)
+constexpr unsigned long at_hwcap2 = AT_HWCAP2;
+#        else
+constexpr unsigned long at_hwcap2 = 26;
+#        endif
+
 CpuFeatures detect() {
     CpuFeatures f;
     f.arch = Architecture::Aarch64;
     f.neon = true;
 
     unsigned long const hwcap = getauxval(AT_HWCAP);
-#        if defined(HWCAP_SVE)
-    f.sve = (hwcap & HWCAP_SVE) != 0;
-#        endif
-#        if defined(HWCAP_ASIMDHP)
-    f.neon_fp16 = (hwcap & HWCAP_ASIMDHP) != 0;
-#        endif
-#        if defined(HWCAP_ASIMDDP)
-    f.neon_dotprod = (hwcap & HWCAP_ASIMDDP) != 0;
-#        endif
+    f.sve                     = (hwcap & hwcap_bit::sve) != 0;
+    f.neon_fp16               = (hwcap & hwcap_bit::asimdhp) != 0;
+    f.neon_dotprod            = (hwcap & hwcap_bit::asimddp) != 0;
 
-#        if defined(AT_HWCAP2)
-    unsigned long const hwcap2 = getauxval(AT_HWCAP2);
-#            if defined(HWCAP2_SVE2)
-    f.sve2 = (hwcap2 & HWCAP2_SVE2) != 0;
-#            endif
-#            if defined(HWCAP2_BF16)
-    f.neon_bf16 = (hwcap2 & HWCAP2_BF16) != 0;
-#            endif
-#            if defined(HWCAP2_I8MM)
-    f.neon_i8mm = (hwcap2 & HWCAP2_I8MM) != 0;
-#            endif
-#            if defined(HWCAP2_SME)
-    f.sme = (hwcap2 & HWCAP2_SME) != 0;
-#            endif
-#            if defined(HWCAP2_SME2)
-    f.sme2 = (hwcap2 & HWCAP2_SME2) != 0;
-#            endif
-#            if defined(HWCAP2_SME_F64F64)
-    f.sme_f64f64 = (hwcap2 & HWCAP2_SME_F64F64) != 0;
-#            endif
-#        endif
+    // A kernel too old to have AT_HWCAP2 returns 0 for it: none of these.
+    unsigned long const hwcap2 = getauxval(at_hwcap2);
+    f.sve2                     = (hwcap2 & hwcap2_bit::sve2) != 0;
+    f.neon_bf16                = (hwcap2 & hwcap2_bit::bf16) != 0;
+    f.neon_i8mm                = (hwcap2 & hwcap2_bit::i8mm) != 0;
+    f.sme                      = (hwcap2 & hwcap2_bit::sme) != 0;
+    f.sme2                     = (hwcap2 & hwcap2_bit::sme2) != 0;
+    f.sme_f64f64               = (hwcap2 & hwcap2_bit::sme_f64f64) != 0;
 
     return f;
 }

@@ -573,7 +573,7 @@ SME family) are detected via ``sysctl`` on macOS and ``getauxval`` on Linux;
 NEON itself is the aarch64 baseline.
 
 aarch64 has one optional rung, ``Sme`` (SME2 with FP64 outer products,
-compiled with ``-march=armv8.6-a+sme2+sme-f64f64``). Its features do not
+compiled with ``-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64``). Its features do not
 nest the way the x86 levels do: Apple M4 has SME but no non-streaming SVE.
 So the ladder is not a ranking of enumerator values. ``supports()`` says
 whether a machine can run a rung, and ``preference_order()`` lists each

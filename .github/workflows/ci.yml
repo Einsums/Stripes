@@ -138,11 +138,16 @@ jobs:
       QEMU_LD_PREFIX: /usr/aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v7
-      - name: Install the cross toolchain and QEMU
+      - name: Install the cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build g++-14-aarch64-linux-gnu qemu-user-static binfmt-support
-          sudo update-binfmts --enable qemu-aarch64 || true
+          sudo apt-get install -y ninja-build g++-14-aarch64-linux-gnu
+      # Ubuntu 24.04's QEMU (8.2) has no SME2, so its -cpu max cannot run the sme rung; this image's
+      # does, and registers it with binfmt_misc for every aarch64 binary.
+      - uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3
+          platforms: arm64
       - name: Configure
         run: >
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
