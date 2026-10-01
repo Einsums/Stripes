@@ -32,7 +32,7 @@
 #if !defined(STRIPES_FORCEINLINE)
 #    if defined(__NVCC__) || defined(__CUDACC__)
 #        define STRIPES_FORCEINLINE inline
-#    elif defined(_MSC_VER) && !defined(__clang__)
+#    elif defined(_MSC_VER) // MSVC and clang-cl; clang-cl defines no __GNUC__
 #        define STRIPES_FORCEINLINE __forceinline
 #    elif defined(__GNUC__)
 #        define STRIPES_FORCEINLINE inline __attribute__((__always_inline__))

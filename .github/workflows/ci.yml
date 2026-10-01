@@ -176,12 +176,14 @@ jobs:
       - name: Test
         run: ctest --test-dir build -j4
 
+  # clang-cl, Visual Studio's bundled LLVM toolset: the MSVC ABI and libraries with Clang's code
+  # generation, which reaches the v2 rung through /clang:-march=x86-64-v2 (the MSVC driver cannot).
   windows:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -T ClangCL
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel
       - name: Test
