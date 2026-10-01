@@ -407,8 +407,9 @@ void set_message_handler(MessageHandler handler) noexcept {
 
 bool set_arch_override(std::string_view name) {
     std::lock_guard<std::mutex> const lock(override_mutex);
+    // An empty name removes the override, so STRIPES_ARCH decides again.
     override_value = std::string(name);
-    override_set   = true;
+    override_set   = !name.empty();
     return !arch_selected.load(std::memory_order_acquire);
 }
 

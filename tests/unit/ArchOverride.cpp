@@ -47,6 +47,14 @@ TEST_CASE("set_arch_override wins over STRIPES_ARCH", "[override-env]") {
     stripes::set_message_handler(nullptr);
 }
 
+TEST_CASE("an empty override hands the choice back to STRIPES_ARCH", "[override-cleared]") {
+    // Registered with STRIPES_ARCH=baseline. A program forwarding a setting of its own that the user
+    // left empty passes "", which must not shadow the environment.
+    REQUIRE(stripes::set_arch_override("v2"));
+    REQUIRE(stripes::set_arch_override(""));
+    CHECK(stripes::selected_arch() == InstructionSet::Baseline);
+}
+
 TEST_CASE("an unusable STRIPES_ARCH reaches the message handler", "[handler]") {
     stripes::set_message_handler(&capture);
     stripes::CpuFeatures const host = stripes::cpu_features();

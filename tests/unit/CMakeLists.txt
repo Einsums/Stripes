@@ -105,3 +105,5 @@ set_tests_properties(unit.ArchOverride.env PROPERTIES ENVIRONMENT "STRIPES_ARCH=
 add_test(NAME unit.ArchOverride.override_env COMMAND ArchOverride_test "[override-env]")
 set_tests_properties(unit.ArchOverride.override_env PROPERTIES ENVIRONMENT "STRIPES_ARCH=bogus")
 add_test(NAME unit.ArchOverride.handler COMMAND ArchOverride_test "[handler]")
+add_test(NAME unit.ArchOverride.override_cleared COMMAND ArchOverride_test "[override-cleared]")
+set_tests_properties(unit.ArchOverride.override_cleared PROPERTIES ENVIRONMENT "STRIPES_ARCH=baseline")
