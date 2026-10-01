@@ -62,13 +62,7 @@ double ulp_error(T got, long double ref) {
 // the case "the double-double reference agrees with erfl and erfcl" checks them against it.
 // ---------------------------------------------------------------------------------------------------
 
-/// VecErfDoubleDouble_test sets STRIPES_TEST_DOUBLE_DOUBLE_REFERENCE, so the platforms with a wide
-/// long double also run the accuracy cases against the reference the others depend on.
-#if defined(STRIPES_TEST_DOUBLE_DOUBLE_REFERENCE)
-constexpr bool wide_long_double = false;
-#else
 constexpr bool wide_long_double = std::numeric_limits<long double>::digits >= 64;
-#endif
 
 /// hi + lo, with |lo| at most half an ulp of hi.
 struct DD {
@@ -104,6 +98,10 @@ DD operator*(DD x, DD y) {
     DD const p = two_prod(x.hi, y.hi);
     return quick_two_sum(p.hi, p.lo + (x.hi * y.lo + x.lo * y.hi));
 }
+DD operator*(DD x, double b) {
+    DD const p = two_prod(x.hi, b);
+    return quick_two_sum(p.hi, p.lo + x.lo * b);
+}
 DD operator/(DD x, DD y) {
     double const q1 = x.hi / y.hi;
     DD const     r1 = x - y * DD{q1};
@@ -130,15 +128,28 @@ std::ostream &operator<<(std::ostream &os, Exact const &e) {
     return os << std::setprecision(17) << e.value.hi << " + " << e.value.lo << " (times 2^" << e.scale << ")";
 }
 
+/// 1 / n and 1 / (2n + 1) for the series, so its loop multiplies rather than divides.
+struct SeriesReciprocals {
+    static constexpr int size = 128;
+    DD                   inv[size], inv_odd[size];
+    SeriesReciprocals() {
+        for (int n = 1; n < size; ++n) {
+            inv[n]     = DD{1.0} / DD{static_cast<double>(n)};
+            inv_odd[n] = DD{1.0} / DD{static_cast<double>(2 * n + 1)};
+        }
+    }
+};
+
 /// erf(x) for |x| <= 2 by its Taylor series, 2 / sqrt(pi) sum (-1)^n x^(2n + 1) / (n! (2n + 1)). The
 /// largest term at |x| = 2 is about e^4, so cancellation costs some 6 of the 106 bits.
 DD erf_series(double x) {
-    DD const x2   = two_prod(x, x);
-    DD       term = {x};
-    DD       sum  = {x};
-    for (int n = 1; n < 200; ++n) {
-        term          = -(term * x2) / DD{static_cast<double>(n)};
-        DD const part = term / DD{static_cast<double>(2 * n + 1)};
+    static SeriesReciprocals const r;
+    DD const                       x2   = two_prod(x, x);
+    DD                             term = {x};
+    DD                             sum  = {x};
+    for (int n = 1; n < SeriesReciprocals::size; ++n) {
+        term          = -(term * x2) * r.inv[n];
+        DD const part = term * r.inv_odd[n];
         sum           = sum + part;
         if (std::fabs(part.hi) < 1e-36 * std::fabs(sum.hi)) {
             break;
@@ -150,13 +161,14 @@ DD erf_series(double x) {
 /// e^(-x^2) as value * 2^scale: n ln 2 taken out, the rest divided by 2^9, a Taylor series, and nine
 /// squarings.
 Exact exp_minus_square(double x) {
-    DD const     s = two_prod(x, x);
-    double const k = std::nearbyint(s.hi / ln2.hi);
-    DD const     r = ldexp(ln2 * DD{k} - s, -9); // -x^2 + k ln 2, over 512: |r| < 7e-4
-    DD           e = {1.0};
-    DD           t = {1.0};
+    DD const                       s = two_prod(x, x);
+    double const                   k = std::nearbyint(s.hi / ln2.hi);
+    DD const                       r = ldexp(ln2 * DD{k} - s, -9); // -x^2 + k ln 2, over 512: |r| < 7e-4
+    DD                             e = {1.0};
+    DD                             t = {1.0};
+    static SeriesReciprocals const inv;
     for (int n = 1; n <= 14; ++n) {
-        t = t * r / DD{static_cast<double>(n)};
+        t = t * r * inv.inv[n];
         e = e + t;
     }
     for (int i = 0; i < 9; ++i) {
@@ -165,16 +177,26 @@ Exact exp_minus_square(double x) {
     return {e, -static_cast<int>(k)};
 }
 
-/// erfc(x) for x >= 2 by its continued fraction, e^(-x^2) / (sqrt(pi) (x + (1/2) / (x + 1 / (x + (3/2)
-/// / (x + ...))))), evaluated from the back; the term count gives well over 100 bits from x = 2 up.
+/// erfc(x) for x >= 2 by its continued fraction, e^(-x^2) / (sqrt(pi) f) with f = x + (1/2) / (x + 1 /
+/// (x + (3/2) / (x + ...))). f is evaluated forwards as P_n / Q_n by the continuants' recurrences
+/// P_k = x P_(k-1) + (k/2) P_(k-2) (and Q likewise), which take two multiplications by a double per
+/// term and one division at the end; the terms are positive, so the recurrence is stable. 40 + 300
+/// / x^2 terms converge to 79 bits or better from x = 2 up (measured against four times as many),
+/// well past the 64 a fraction of an ulp needs.
 Exact erfc_fraction(double x) {
-    int const n = 40 + static_cast<int>(800.0 / (x * x));
-    DD        f = {x};
-    for (int k = n; k >= 1; --k) {
-        f = DD{x} + DD{0.5 * k} / f;
+    int const n      = 40 + static_cast<int>(300.0 / (x * x));
+    DD        p_prev = {1.0}, p = {x};
+    DD        q_prev = {0.0}, q = {1.0};
+    for (int k = 1; k <= n; ++k) {
+        DD const p_next = p * x + p_prev * (0.5 * k);
+        DD const q_next = q * x + q_prev * (0.5 * k);
+        p_prev          = p;
+        p               = p_next;
+        q_prev          = q;
+        q               = q_next;
     }
     Exact e = exp_minus_square(x);
-    e.value = e.value * one_over_sqrt_pi / f;
+    e.value = e.value * one_over_sqrt_pi * q / p;
     return e;
 }
 
@@ -338,6 +360,8 @@ TEST_CASE("the double-double reference agrees with erfl and erfcl", "[simd][math
     // Where long double is wider than double, erfl and erfcl judge the double-double reference the
     // other platforms use, compared in long double: its error must be a small fraction of an ulp of
     // double everywhere the tests evaluate it. (x87 erfl is itself good to about 2^-11 ulp of double.)
+    // Stripes' own results are also measured both ways, which checks the scaled error measure those
+    // platforms depend on (subnormal erfc included) gives the same answer as the long double one.
     if constexpr (!wide_long_double) {
         SKIP("long double is double here, so there is nothing more accurate to check the reference against");
     } else {
@@ -351,19 +375,27 @@ TEST_CASE("the double-double reference agrees with erfl and erfcl", "[simd][math
             }
             return static_cast<double>(std::fabs(value - want) / static_cast<long double>(ulp));
         };
-        double     worst_erf = 0, worst_erfc = 0;
+        double     worst_erf = 0, worst_erfc = 0, worst_measure = 0;
         long const n_erf = sweep(120000);
         for (long i = 0; i <= n_erf; ++i) {
-            double const x = -6.0 + 12.0 * static_cast<double>(i) / static_cast<double>(n_erf);
-            worst_erf      = std::max(worst_erf, gap(erfl(x), dd_erf(x)));
+            double const x  = -6.0 + 12.0 * static_cast<double>(i) / static_cast<double>(n_erf);
+            Exact const  dd = dd_erf(x);
+            worst_erf       = std::max(worst_erf, gap(erfl(x), dd));
+            double const y  = simd::erf(x);
+            worst_measure   = std::max(worst_measure, std::fabs(ulp_error<double>(y, erfl(x)) - ulp_error<double>(y, dd)));
         }
         long const n_erfc = sweep(200000);
         for (long i = 0; i <= n_erfc; ++i) {
-            double const x = -6.0 + 33.25 * static_cast<double>(i) / static_cast<double>(n_erfc);
-            worst_erfc     = std::max(worst_erfc, gap(erfcl(x), dd_erfc(x)));
+            double const x  = -6.0 + 33.25 * static_cast<double>(i) / static_cast<double>(n_erfc);
+            Exact const  dd = dd_erfc(x);
+            worst_erfc      = std::max(worst_erfc, gap(erfcl(x), dd));
+            double const y  = simd::erfc(x);
+            worst_measure   = std::max(worst_measure, std::fabs(ulp_error<double>(y, erfcl(x)) - ulp_error<double>(y, dd)));
         }
-        INFO("worst erf " << worst_erf << " ulp, worst erfc " << worst_erfc << " ulp of double");
+        INFO("worst erf " << worst_erf << " ulp, worst erfc " << worst_erfc << " ulp of double; the two measures of Stripes' error "
+                          << "differ by at most " << worst_measure << " ulp");
         CHECK(worst_erf <= 0.01);
         CHECK(worst_erfc <= 0.01);
+        CHECK(worst_measure <= 0.01);
     }
 }

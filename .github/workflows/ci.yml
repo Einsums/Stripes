@@ -189,7 +189,11 @@ jobs:
         run: cmake --build build
       - name: Check that the build is the scalar fallback
         run: ./build/examples/example_PlatformInfo | tee platform.log && grep -q "compiled for 0-bit vectors" platform.log
+      # Every suite has to run here (no native runner has the scalar fallback), but under emulation the
+      # accuracy sweeps run a sixteenth of their points; the native jobs run them in full.
       - name: Test
+        env:
+          STRIPES_TEST_SWEEP_DIVISOR: "16"
         run: ctest --test-dir build -j4 --timeout 1800
 
   # NEON on real aarch64 hardware (Neoverse, with SVE2 and no SME: the sme copies are Skipped).
