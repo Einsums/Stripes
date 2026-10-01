@@ -93,6 +93,13 @@ if(STRIPES_WITH_DISPATCH
   endif()
 endif()
 
+# The erf and erfc accuracy cases against the double-double reference that platforms whose long double
+# is double use instead of erfl and erfcl, so every Linux run checks those bounds with it as well.
+add_executable(VecErfDoubleDouble_test VecErf.cpp)
+target_link_libraries(VecErfDoubleDouble_test PRIVATE Stripes::stripes Catch2::Catch2WithMain)
+target_compile_definitions(VecErfDoubleDouble_test PRIVATE STRIPES_TEST_DOUBLE_DOUBLE_REFERENCE)
+add_test(NAME unit.VecErfDoubleDouble COMMAND VecErfDoubleDouble_test)
+
 # selected_arch() chooses once per process, so each ArchOverride case is its own test process.
 add_executable(ArchOverride_test ArchOverride.cpp)
 target_link_libraries(ArchOverride_test PRIVATE Stripes::stripes Catch2::Catch2WithMain)

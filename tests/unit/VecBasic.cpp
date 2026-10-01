@@ -35,9 +35,9 @@ TEST_CASE("Platform detection", "[simd]") {
     // native_bits must be one of the known values
     CHECK((native_bits == 0 || native_bits == 128 || native_bits == 256 || native_bits == 512));
 
-    // native_lanes must be consistent
-    CHECK(native_lanes<float> == native_bits / 32);
-    CHECK(native_lanes<double> == native_bits / 64);
+    // native_lanes must be consistent; the scalar fallback (0 bits) holds one of each.
+    CHECK(native_lanes<float> == (native_bits == 0 ? 1 : native_bits / 32));
+    CHECK(native_lanes<double> == (native_bits == 0 ? 1 : native_bits / 64));
 
     // AVX-10 invariants:
     //   - AVX-10/256 chips have AVX2 but NOT __AVX512F__ (so has_avx512 is false).

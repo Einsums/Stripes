@@ -15,6 +15,18 @@
 STRIPES_NAMESPACE_BEGIN()
 STRIPES_ISA_NAMESPACE_BEGIN()
 
+#if defined(STRIPES_SCALAR_FALLBACK)
+
+// A one-lane register holds no complex value, so the scalar fallback build has no CVec: using it is
+// a compile error that says so, and std::complex does the work there.
+template <typename T>
+struct CVec {
+    static_assert(sizeof(T) == 0, "CVec<T> needs a register that holds at least one complex value, and the scalar fallback "
+                                  "build (STRIPES_SCALAR_FALLBACK) has one lane; use std::complex there");
+};
+
+#else
+
 // ===========================================================================
 // CVec<T>: interleaved complex SIMD vector.
 //
@@ -88,7 +100,7 @@ STRIPES_FORCEINLINE void complex_storeu_partial(std::complex<T> *ptr, CVec<T> v,
 template <typename T>
 STRIPES_FORCEINLINE CVec<T> complex_broadcast(std::complex<T> val);
 
-#if defined(__AVX512F__) && defined(__AVX512VL__)
+#    if defined(__AVX512F__) && defined(__AVX512VL__)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
     return _mm512_setr_ps(val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag(), val.real(),
@@ -98,7 +110,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
     return _mm512_setr_pd(val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag());
 }
-#elif defined(__AVX__)
+#    elif defined(__AVX__)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
     return _mm256_setr_ps(val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag(), val.real(), val.imag());
@@ -107,7 +119,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
     return _mm256_setr_pd(val.real(), val.imag(), val.real(), val.imag());
 }
-#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#    elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
     return _mm_setr_ps(val.real(), val.imag(), val.real(), val.imag());
@@ -116,7 +128,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
     return _mm_setr_pd(val.real(), val.imag());
 }
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
     float tmp[4] = {val.real(), val.imag(), val.real(), val.imag()};
@@ -127,7 +139,7 @@ STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
     double tmp[2] = {val.real(), val.imag()};
     return vld1q_f64(tmp);
 }
-#else
+#    else
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float>) {
     return {0.0f}; // scalar fallback: CVec holds 0 complex values
@@ -136,7 +148,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double>) {
     return {0.0};
 }
-#endif
+#    endif
 
 // ===========================================================================
 // Add / Sub: element-wise, identical to real operations
@@ -159,7 +171,7 @@ STRIPES_FORCEINLINE CVec<T> complex_sub(CVec<T> a, CVec<T> b) {
 template <typename T>
 STRIPES_FORCEINLINE CVec<T> conjugate(CVec<T> v);
 
-#if defined(__AVX512F__) && defined(__AVX512VL__)
+#    if defined(__AVX512F__) && defined(__AVX512VL__)
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     auto sign = _mm512_setr_ps(0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f);
@@ -170,7 +182,7 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     auto sign = _mm512_setr_pd(0.0, -0.0, 0.0, -0.0, 0.0, -0.0, 0.0, -0.0);
     return _mm512_xor_pd(v.reg, sign);
 }
-#elif defined(__AVX__)
+#    elif defined(__AVX__)
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     auto sign = _mm256_setr_ps(0.f, -0.f, 0.f, -0.f, 0.f, -0.f, 0.f, -0.f);
@@ -181,7 +193,7 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     auto sign = _mm256_setr_pd(0.0, -0.0, 0.0, -0.0);
     return _mm256_xor_pd(v.reg, sign);
 }
-#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#    elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     auto sign = _mm_setr_ps(0.f, -0.f, 0.f, -0.f);
@@ -192,7 +204,7 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     auto sign = _mm_setr_pd(0.0, -0.0);
     return _mm_xor_pd(v.reg, sign);
 }
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     // Negate odd lanes (imaginary parts) via XOR with sign bit
@@ -206,7 +218,7 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     auto                sign         = vld1q_f64(conj_data);
     return vreinterpretq_f64_u64(veorq_u64(vreinterpretq_u64_f64(v.reg), vreinterpretq_u64_f64(sign)));
 }
-#else
+#    else
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     return v;
@@ -215,7 +227,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     return v;
 }
-#endif
+#    endif
 
 // ===========================================================================
 // Complex multiply: (a_re + i*a_im) * (b_re + i*b_im)
@@ -234,7 +246,7 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
 template <typename T>
 STRIPES_FORCEINLINE CVec<T> complex_mul(CVec<T> a, CVec<T> b);
 
-#if defined(__AVX512F__) && defined(__AVX512VL__)
+#    if defined(__AVX512F__) && defined(__AVX512VL__)
 // fmaddsub(x, y, z) computes x*y - z in the even (real) lanes and x*y + z in
 // the odd (imaginary) lanes, which is steps 3 and 6 fused into one.
 template <>
@@ -251,7 +263,7 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto b_swap = _mm512_shuffle_pd(b.reg, b.reg, 0x55);
     return _mm512_fmaddsub_pd(a_rr, b.reg, _mm512_mul_pd(a_ii, b_swap));
 }
-#elif defined(__AVX__)
+#    elif defined(__AVX__)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
     // Duplicate real parts: [r0,r0,r1,r1,...] and imag parts: [i0,i0,i1,i1,...]
@@ -260,11 +272,11 @@ STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
     // Swap re<->im in b
     auto b_swap = _mm256_shuffle_ps(b.reg, b.reg, 0xB1); // 10_11_00_01
     auto t2     = _mm256_mul_ps(a_ii, b_swap);
-#    if defined(STRIPES_HAVE_FMA)
+#        if defined(STRIPES_HAVE_FMA)
     return _mm256_fmaddsub_ps(a_rr, b.reg, t2); // even: a_rr*b - t2, odd: a_rr*b + t2
-#    else
+#        else
     return _mm256_addsub_ps(_mm256_mul_ps(a_rr, b.reg), t2); // even: t1-t2, odd: t1+t2
-#    endif
+#        endif
 }
 template <>
 STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
@@ -272,13 +284,13 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto a_ii   = _mm256_shuffle_pd(a.reg, a.reg, 0xF); // [i0,i0,i1,i1]
     auto b_swap = _mm256_shuffle_pd(b.reg, b.reg, 0x5); // swap re<->im
     auto t2     = _mm256_mul_pd(a_ii, b_swap);
-#    if defined(STRIPES_HAVE_FMA)
+#        if defined(STRIPES_HAVE_FMA)
     return _mm256_fmaddsub_pd(a_rr, b.reg, t2);
-#    else
+#        else
     return _mm256_addsub_pd(_mm256_mul_pd(a_rr, b.reg), t2);
-#    endif
+#        endif
 }
-#elif defined(__SSE3__) || (!defined(__clang__) && (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
+#    elif defined(__SSE3__) || (!defined(__clang__) && (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
 // SSE3+ path: moveldup/movehdup/movedup and addsub are SSE3 intrinsics. True MSVC (cl) exposes
 // them regardless of the target feature level, so its checks stay here - but clang-cl enforces
 // target features (always_inline errors at the bare x86-64 baseline), so it only takes this
@@ -301,7 +313,7 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto t2     = _mm_mul_pd(a_ii, b_swap);
     return _mm_addsub_pd(t1, t2);
 }
-#elif defined(__SSE2__)
+#    elif defined(__SSE2__)
 // SSE2-only fallback (e.g. the generic x86-64 baseline used by the conda toolchain): no
 // moveldup/movehdup/movedup or addsub. Duplicate the real/imag lanes with plain shuffles and
 // emulate addsub by multiplying the second product by an alternating [-1,+1,...] mask.
@@ -325,7 +337,7 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto neg    = _mm_set_pd(1.0, -1.0); // lanes [-1,+1]
     return _mm_add_pd(t1, _mm_mul_pd(t2, neg));
 }
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
     // NEON FCMLA (complex multiply-accumulate) is available on ARMv8.3+
@@ -353,7 +365,7 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto                neg            = vld1q_f64(negate_data);
     return vaddq_f64(t1, vmulq_f64(t2, neg));
 }
-#else
+#    else
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
     return a; // scalar: single element, not meaningful
@@ -362,7 +374,7 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     return a;
 }
-#endif
+#    endif
 
 // ===========================================================================
 // Complex FMA: a * b + c  (all complex)
@@ -448,7 +460,7 @@ STRIPES_FORCEINLINE void complex_scatter(std::complex<T> *base, std::ptrdiff_t s
 // Operator overloads
 // ===========================================================================
 
-#if !defined(STRIPES_NO_OPERATORS)
+#    if !defined(STRIPES_NO_OPERATORS)
 template <typename T>
 STRIPES_FORCEINLINE CVec<T> operator+(CVec<T> a, CVec<T> b) {
     return complex_add(a, b);
@@ -461,7 +473,9 @@ template <typename T>
 STRIPES_FORCEINLINE CVec<T> operator*(CVec<T> a, CVec<T> b) {
     return complex_mul(a, b);
 }
-#endif
+#    endif
+
+#endif // STRIPES_SCALAR_FALLBACK
 
 STRIPES_ISA_NAMESPACE_END()
 STRIPES_NAMESPACE_END()

@@ -49,8 +49,13 @@ jobs:
       # The compiler packages do not all export CXX on activation, and the runner has compilers of its
       # own on PATH, so name the environment's explicitly and fail if it is missing.
       - name: Select the conda compiler
+        # Target-prefixed names first (older compiler packages); cxx-compiler 2 installs plain ones.
         run: |
-          cxx=$(ls "$CONDA_PREFIX"/bin/*-conda-linux-gnu-c++ "$CONDA_PREFIX"/bin/*-apple-darwin*-clang++ 2>/dev/null | head -n 1)
+          cxx=""
+          for candidate in "$CONDA_PREFIX"/bin/*-conda-linux-gnu-c++ "$CONDA_PREFIX"/bin/*-apple-darwin*-clang++ \
+                           "$CONDA_PREFIX/bin/clang++" "$CONDA_PREFIX/bin/g++"; do
+            if [ -x "$candidate" ]; then cxx=$candidate; break; fi
+          done
           test -n "$cxx" || { echo "::error::no conda-forge C++ compiler in $CONDA_PREFIX/bin"; exit 1; }
           "$cxx" --version
           echo "STRIPES_CONDA_CXX=$cxx" >> "$GITHUB_ENV"
@@ -133,24 +138,34 @@ jobs:
       - name: Test
         run: ctest --test-dir build -j4
 
-  # The scalar fallback: 32-bit x86 with no SSE at all, so every header takes its last branch. The
-  # x87 unit keeps intermediates at 80 bits until they are stored, so a float that overflowed still
-  # compares as finite; -fexcess-precision=standard rounds at every assignment and cast, as C++
-  # requires and as the bit-exact results of exp and erf assume.
+  # The scalar fallback, on a target with no SIMD at all: 64-bit RISC-V without the vector
+  # extension (RV64GC), so every header takes its last branch, with ordinary IEEE float arithmetic.
+  # (32-bit x86 without SSE is not used: the x87 unit evaluates expressions at 80 bits, which no
+  # flag undoes, so no kernel's vector and scalar forms could agree bit for bit there.)
   scalar:
     runs-on: ubuntu-24.04
+    env:
+      QEMU_LD_PREFIX: /usr/riscv64-linux-gnu
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build g++-14-multilib
+      - name: Install the cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14-riscv64-linux-gnu
+      - uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3
+          platforms: riscv64
       - name: Configure
         run: >
-          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=g++-14
-          "-DCMAKE_CXX_FLAGS=-m32 -march=i686 -mno-sse -mfpmath=387 -fexcess-precision=standard" -DCMAKE_EXE_LINKER_FLAGS=-m32
-          -DCMAKE_SHARED_LINKER_FLAGS=-m32 -DSTRIPES_WITH_DISPATCH=OFF
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/riscv64-linux-gnu.cmake -DSTRIPES_CROSS_GCC_VERSION=-14
       - name: Build
         run: cmake --build build
+      - name: Check that the build is the scalar fallback
+        run: ./build/examples/example_PlatformInfo | tee platform.log && grep -q "compiled for 0-bit vectors" platform.log
       - name: Test
-        run: ctest --test-dir build -j4
+        run: ctest --test-dir build -j4 --timeout 1800
 
   # NEON on real aarch64 hardware (Neoverse, with SVE2 and no SME: the sme copies are Skipped).
   linux-arm64:

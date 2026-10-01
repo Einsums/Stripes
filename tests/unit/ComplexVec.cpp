@@ -12,6 +12,13 @@
 
 #include <catch2/catch_all.hpp>
 
+#if defined(STRIPES_SCALAR_FALLBACK)
+// A one-lane register holds no complex value, so CVec does not exist in the scalar fallback build.
+TEST_CASE("CVec needs a register wider than one lane", "[simd][complex]") {
+    SKIP("the scalar fallback build has no CVec");
+}
+#else
+
 using namespace stripes;
 
 TEMPLATE_TEST_CASE("CVec complex_broadcast and load round-trip", "[simd][complex]", float, double) {
@@ -329,8 +336,7 @@ TEMPLATE_TEST_CASE("complex_reduce_add sums real and imaginary parts apart", "[s
         in[i] = C(static_cast<TestType>(i + 1), static_cast<TestType>(-10 * (i + 1)));
         expected += in[i];
     }
-    // The scalar build's one-lane register holds no whole complex value, and has nothing to reduce.
-    if constexpr (N > 0) {
-        CHECK(complex_reduce_add(complex_loadu(in)) == expected);
-    }
+    CHECK(complex_reduce_add(complex_loadu(in)) == expected);
 }
+
+#endif // STRIPES_SCALAR_FALLBACK

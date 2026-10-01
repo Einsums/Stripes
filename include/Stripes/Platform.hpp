@@ -57,7 +57,10 @@
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #    define STRIPES_ISA_TIER_ isa_neon
 #else
-#    define STRIPES_ISA_TIER_ isa_scalar
+#    define STRIPES_ISA_TIER_       isa_scalar
+/// No SIMD unit: every Vec<T> is one T. Defined for code that has to leave out what needs more than
+/// one lane per register, such as CVec, at the preprocessor.
+#    define STRIPES_SCALAR_FALLBACK 1
 #endif
 
 // One piece per feature: its suffix when the feature is on, nothing when it is off.

@@ -300,6 +300,7 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<double> * /*rows*/) {
 
 #endif
 
+#if !defined(STRIPES_SCALAR_FALLBACK) // a one-lane register holds no complex value: no CVec
 // ===========================================================================
 // Complex transpose: transpose_inplace for CVec<T>
 //
@@ -367,6 +368,7 @@ STRIPES_FORCEINLINE void complex_transpose_inplace(CVec<double> *rows) {
     for (int i = 0; i < N; ++i)
         rows[i].reg = loadu(&buf[i * N * 2]);
 }
+#endif // STRIPES_SCALAR_FALLBACK
 
 // ===========================================================================
 // Interleaved store: storeu_interleaved<R>(dst, rows)

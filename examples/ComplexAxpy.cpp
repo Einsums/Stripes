@@ -18,6 +18,14 @@
 #include <iostream>
 #include <vector>
 
+#if defined(STRIPES_SCALAR_FALLBACK)
+// A one-lane register holds no complex value, so CVec does not exist in the scalar fallback build.
+int main() {
+    std::cout << "no CVec in the scalar fallback build; std::complex does the work there\n";
+    return 0;
+}
+#else
+
 using namespace stripes;
 
 namespace {
@@ -27,13 +35,9 @@ void conj_axpy(std::size_t n, std::complex<double> a, std::complex<double> const
     CVec<double> const    va = complex_broadcast(a);
 
     std::size_t i = 0;
-    // A register too narrow for one complex value (the scalar build's) has no complex lanes, and a
-    // loop stepping by zero would never end; the scalar loop then does it all.
-    if constexpr (CL > 0) {
-        for (; i + CL <= n; i += CL) {
-            CVec<double> const prod = complex_mul(va, conjugate(complex_loadu(x + i)));
-            complex_storeu(y + i, complex_add(prod, complex_loadu(y + i)));
-        }
+    for (; i + CL <= n; i += CL) {
+        CVec<double> const prod = complex_mul(va, conjugate(complex_loadu(x + i)));
+        complex_storeu(y + i, complex_add(prod, complex_loadu(y + i)));
     }
     for (; i < n; ++i) {
         y[i] += a * std::conj(x[i]);
@@ -60,3 +64,5 @@ int main() {
     std::cout << CVec<double>::complex_lanes << " complex<double> per CVec; largest error " << worst << "\n";
     return worst < 1e-13 ? 0 : 1;
 }
+
+#endif // STRIPES_SCALAR_FALLBACK
