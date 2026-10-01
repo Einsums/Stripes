@@ -467,6 +467,10 @@ STRIPES_FORCEINLINE void mask_widen(Mask<Narrow> m, Mask<Wide> &lo, Mask<Wide> &
     __m256 const uh = _mm256_unpackhi_ps(f, f); // lanes 2 3 | 6 7, each doubled
     lo              = Mask<Wide>(std::bit_cast<typename Mask<Wide>::reg_type>(_mm256_permute2f128_ps(ul, uh, 0x20)));
     hi              = Mask<Wide>(std::bit_cast<typename Mask<Wide>::reg_type>(_mm256_permute2f128_ps(ul, uh, 0x31)));
+#elif defined(STRIPES_MASK_IS_PRED)
+    // PUNPKLO and PUNPKHI: each half of a 32-bit lane predicate as a 64-bit lane predicate.
+    lo = Mask<Wide>(svunpklo_b(m.reg));
+    hi = Mask<Wide>(svunpkhi_b(m.reg));
 #elif defined(__aarch64__) || defined(_M_ARM64)
     int32x4_t const s = vreinterpretq_s32_u32(m.reg);
     lo                = Mask<Wide>(vreinterpretq_u64_s64(vmovl_s32(vget_low_s32(s))));
@@ -491,6 +495,10 @@ STRIPES_FORCEINLINE Mask<Narrow> mask_narrow(Mask<Wide> lo, Mask<Wide> hi) {
     __m128 const a = _mm_shuffle_ps(_mm256_castps256_ps128(l), _mm256_extractf128_ps(l, 1), _MM_SHUFFLE(2, 0, 2, 0));
     __m128 const b = _mm_shuffle_ps(_mm256_castps256_ps128(h), _mm256_extractf128_ps(h, 1), _MM_SHUFFLE(2, 0, 2, 0));
     return Mask<Narrow>(std::bit_cast<typename Mask<Narrow>::reg_type>(_mm256_insertf128_ps(_mm256_castps128_ps256(a), b, 1)));
+#elif defined(STRIPES_MASK_IS_PRED)
+    // A 64-bit lane's flag is on its first 32-bit element, so the even 32-bit elements of lo and hi,
+    // in order, are the narrow mask.
+    return Mask<Narrow>(svuzp1_b32(lo.reg, hi.reg));
 #elif defined(__aarch64__) || defined(_M_ARM64)
     return Mask<Narrow>(vcombine_u32(vmovn_u64(lo.reg), vmovn_u64(hi.reg)));
 #elif defined(STRIPES_MASK_IS_VECTOR)

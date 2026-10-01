@@ -25,6 +25,7 @@
 #        include <sys/sysctl.h>
 #    elif defined(__linux__)
 #        include <sys/auxv.h>
+#        include <sys/prctl.h>
 #    endif
 #endif
 
@@ -241,6 +242,15 @@ CpuFeatures detect() {
     f.sme2                     = (hwcap2 & hwcap2_bit::sme2) != 0;
     f.sme_f64f64               = (hwcap2 & hwcap2_bit::sme_f64f64) != 0;
 
+    // The thread's SVE vector length, which the fixed-length sve<N> rungs must match exactly. The
+    // kernel ABI: PR_SVE_GET_VL is 51 and the low 16 bits of its result are the length in bytes.
+    if (f.sve) {
+        int const vl = prctl(51 /* PR_SVE_GET_VL */);
+        if (vl > 0) {
+            f.sve_vector_bits = (vl & 0xffff) * 8;
+        }
+    }
+
     return f;
 }
 
@@ -280,9 +290,14 @@ int vector_bits(InstructionSet set) {
         return 256;
     case InstructionSet::V4:
         return 512;
+    case InstructionSet::Sve256:
+        return 256;
+    case InstructionSet::Sve512:
+        return 512;
     case InstructionSet::Baseline:
     case InstructionSet::V2:
     case InstructionSet::Sme:
+    case InstructionSet::Sve128:
         return 128;
     }
     return 128;
@@ -300,6 +315,12 @@ char const *to_string(InstructionSet set) {
         return "x86-64-v4";
     case InstructionSet::Sme:
         return "sme";
+    case InstructionSet::Sve128:
+        return "sve128";
+    case InstructionSet::Sve256:
+        return "sve256";
+    case InstructionSet::Sve512:
+        return "sve512";
     }
     return "baseline";
 }
@@ -327,12 +348,24 @@ std::optional<InstructionSet> parse_instruction_set(std::string_view name) {
     if (lowered == "sme" || lowered == "sme2") {
         return InstructionSet::Sme;
     }
+    if (lowered == "sve128") {
+        return InstructionSet::Sve128;
+    }
+    if (lowered == "sve256") {
+        return InstructionSet::Sve256;
+    }
+    if (lowered == "sve512") {
+        return InstructionSet::Sve512;
+    }
     return std::nullopt;
 }
 
 std::span<InstructionSet const> preference_order(Architecture arch) {
-    static constexpr InstructionSet x86[]     = {InstructionSet::V4, InstructionSet::V3, InstructionSet::V2, InstructionSet::Baseline};
-    static constexpr InstructionSet aarch64[] = {InstructionSet::Sme, InstructionSet::Baseline};
+    static constexpr InstructionSet x86[] = {InstructionSet::V4, InstructionSet::V3, InstructionSet::V2, InstructionSet::Baseline};
+    // At most one sve<N> rung runs on a machine (the one matching its vector length), so their
+    // order among themselves only says which is tried first.
+    static constexpr InstructionSet aarch64[] = {InstructionSet::Sme, InstructionSet::Sve512, InstructionSet::Sve256,
+                                                 InstructionSet::Sve128, InstructionSet::Baseline};
     static constexpr InstructionSet other[]   = {InstructionSet::Baseline};
     switch (arch) {
     case Architecture::X86:
@@ -366,6 +399,12 @@ bool supports(CpuFeatures const &f, InstructionSet set) {
         // The rung's own instructions. What its code needs besides them depends on the compiler that
         // built that code, so select() checks it (see SmeRungRequires).
         return f.arch == Architecture::Aarch64 && f.sme && f.sme2 && f.sme_f64f64;
+    case InstructionSet::Sve128:
+    case InstructionSet::Sve256:
+    case InstructionSet::Sve512:
+        // Compiled for one vector length: on a longer one the register holds lanes the code does not
+        // know about, on a shorter one it reads and writes past them. Exactly that length, then.
+        return f.arch == Architecture::Aarch64 && f.sve && f.sve_vector_bits == vector_bits(set);
     }
     return false;
 }
@@ -422,9 +461,10 @@ InstructionSet resolve_arch(CpuFeatures const &features, std::optional<std::stri
 
     auto const requested = parse_instruction_set(*override_name);
     if (!requested.has_value()) {
-        emit(MessageLevel::Warning, "the requested dispatch rung \"" + std::string(*override_name) +
-                                        "\" is not a recognized instruction-set name; ignoring the request. "
-                                        "Accepted: baseline, v2, v3, v4, sme (aliases: sse2, sse4.2, avx2, avx512, sme2).");
+        emit(MessageLevel::Warning,
+             "the requested dispatch rung \"" + std::string(*override_name) +
+                 "\" is not a recognized instruction-set name; ignoring the request. "
+                 "Accepted: baseline, v2, v3, v4, sme, sve128, sve256, sve512 (aliases: sse2, sse4.2, avx2, avx512, sme2).");
         return ceiling;
     }
 

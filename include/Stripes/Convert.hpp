@@ -66,6 +66,15 @@ template <>
 STRIPES_FORCEINLINE Vec<int32_t> convert<int32_t, float>(Vec<float> v) {
     return _mm_cvttps_epi32(v.reg);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> convert<float, int32_t>(Vec<int32_t> v) {
+    return svcvt_f32_s32_x(svptrue_b32(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> convert<int32_t, float>(Vec<float> v) {
+    return svcvt_s32_f32_x(svptrue_b32(), v.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> convert<float, int32_t>(Vec<int32_t> v) {
@@ -192,6 +201,15 @@ template <>
 STRIPES_FORCEINLINE Vec<double> convert<double, int64_t>(Vec<int64_t> v) {
     return detail::int64_to_double(v);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> convert<int64_t, double>(Vec<double> v) {
+    return svcvt_s64_f64_x(svptrue_b64(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> convert<double, int64_t>(Vec<int64_t> v) {
+    return svcvt_f64_s64_x(svptrue_b64(), v.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<int64_t> convert<int64_t, double>(Vec<double> v) {
@@ -307,6 +325,35 @@ template <>
 STRIPES_FORCEINLINE Vec<int32_t> convert<int32_t, double>(Vec<double> low, Vec<double> high) {
     return _mm_unpacklo_epi64(_mm_cvttpd_epi32(low.reg), _mm_cvttpd_epi32(high.reg));
 }
+#elif defined(STRIPES_SVE_BITS)
+// A conversion between 32- and 64-bit elements reads or writes the 32-bit element at the bottom of
+// each 64-bit one, the even lanes. ZIP1 and ZIP2 put lanes 0 .. L/2 - 1 and L/2 .. L - 1 there to
+// widen, and UZP1 gathers the even lanes of two results to narrow.
+template <>
+STRIPES_FORCEINLINE Vec<double> convert_low<double, float>(Vec<float> v) {
+    return svcvt_f64_f32_x(svptrue_b64(), svzip1_f32(v.reg, v.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> convert_high<double, float>(Vec<float> v) {
+    return svcvt_f64_f32_x(svptrue_b64(), svzip2_f32(v.reg, v.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> convert<float, double>(Vec<double> low, Vec<double> high) {
+    return svuzp1_f32(svcvt_f32_f64_x(svptrue_b64(), low.reg), svcvt_f32_f64_x(svptrue_b64(), high.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> convert_low<double, int32_t>(Vec<int32_t> v) {
+    return svcvt_f64_s32_x(svptrue_b64(), svzip1_s32(v.reg, v.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> convert_high<double, int32_t>(Vec<int32_t> v) {
+    return svcvt_f64_s32_x(svptrue_b64(), svzip2_s32(v.reg, v.reg));
+}
+// FCVTZS to a 32-bit element saturates to the int32 range itself.
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> convert<int32_t, double>(Vec<double> low, Vec<double> high) {
+    return svuzp1_s32(svcvt_s32_f64_x(svptrue_b64(), low.reg), svcvt_s32_f64_x(svptrue_b64(), high.reg));
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<double> convert_low<double, float>(Vec<float> v) {
@@ -404,7 +451,20 @@ STRIPES_FORCEINLINE Vec<H> narrow_lanes(Vec<float> low, Vec<float> high) {
 } // namespace detail
 
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) || defined(__AVX512FP16__)
-#    if defined(__aarch64__) || defined(_M_ARM64)
+#    if defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> convert_low<float, half_t>(Vec<half_t> v) {
+    return svcvt_f32_f16_x(svptrue_b32(), svzip1_f16(v.reg, v.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> convert_high<float, half_t>(Vec<half_t> v) {
+    return svcvt_f32_f16_x(svptrue_b32(), svzip2_f16(v.reg, v.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> convert<half_t, float>(Vec<float> low, Vec<float> high) {
+    return svuzp1_f16(svcvt_f16_f32_x(svptrue_b32(), low.reg), svcvt_f16_f32_x(svptrue_b32(), high.reg));
+}
+#    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> convert_low<float, half_t>(Vec<half_t> v) {
     return vcvt_f32_f16(vget_low_f16(v.reg));
@@ -433,8 +493,25 @@ STRIPES_FORCEINLINE Vec<half_t> convert<half_t, float>(Vec<float> low, Vec<float
 #    endif
 #endif
 
-#if defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC) || defined(__AVX512BF16__)
-#    if defined(__aarch64__) || defined(_M_ARM64)
+#if (defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC) || defined(__AVX512BF16__)) &&                                                          \
+    (!defined(STRIPES_SVE_BITS) || defined(__ARM_FEATURE_SVE_BF16))
+#    if defined(STRIPES_SVE_BITS)
+// bfloat16 is the top half of a float's bits: widening puts it there with a zero below.
+template <>
+STRIPES_FORCEINLINE Vec<float> convert_low<float, bfloat16_t>(Vec<bfloat16_t> v) {
+    svuint16_t const u = svreinterpret_u16_bf16(v.reg);
+    return svreinterpret_f32_u16(svzip1_u16(svdup_n_u16(0), u));
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> convert_high<float, bfloat16_t>(Vec<bfloat16_t> v) {
+    svuint16_t const u = svreinterpret_u16_bf16(v.reg);
+    return svreinterpret_f32_u16(svzip2_u16(svdup_n_u16(0), u));
+}
+template <>
+STRIPES_FORCEINLINE Vec<bfloat16_t> convert<bfloat16_t, float>(Vec<float> low, Vec<float> high) {
+    return svuzp1_bf16(svcvt_bf16_f32_x(svptrue_b32(), low.reg), svcvt_bf16_f32_x(svptrue_b32(), high.reg));
+}
+#    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> convert_low<float, bfloat16_t>(Vec<bfloat16_t> v) {
     return vcvtq_low_f32_bf16(v.reg);

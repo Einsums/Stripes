@@ -12,7 +12,8 @@ Stripes is a portable SIMD library for vectorized kernels. It wraps
 platform-specific intrinsics behind a C++20 interface that works across:
 
 - x86_64: SSE2, SSSE3, SSE4.1/4.2, AVX, AVX2, and AVX-512.
-- ARM: NEON on Apple Silicon and other aarch64 targets.
+- ARM: NEON on Apple Silicon and other aarch64 targets, and fixed-length SVE
+  (128, 256 or 512 bits) through the ``sve<N>`` dispatch rungs.
 
 Everything is header-only except a small runtime library that detects the
 CPU and picks a dispatch rung. Stripes started as the ``SIMD`` module of
@@ -554,7 +555,7 @@ startup.
     CpuFeatures const &f = cpu_features();
     if (f.avx512f) { /* ... */ }
 
-    // The dispatch rung for this process: Baseline, V2, V3, V4, or Sme.
+    // The dispatch rung for this process: Baseline, V2, V3, V4, Sme, Sve128, Sve256 or Sve512.
     InstructionSet arch = selected_arch();
 
 The x86 rungs follow the psABI micro-architecture levels, which map directly
@@ -576,13 +577,26 @@ reported only if using it will not fault. On aarch64, optional features
 SME family) are detected via ``sysctl`` on macOS and ``getauxval`` on Linux;
 NEON itself is the aarch64 baseline.
 
-aarch64 has one optional rung, ``Sme`` (SME2 with FP64 outer products,
-compiled with ``-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64``). Its features do not
-nest the way the x86 levels do: Apple M4 has SME but no non-streaming SVE.
-So the ladder is not a ranking of enumerator values. ``supports()`` says
-whether a machine can run a rung, and ``preference_order()`` lists each
-architecture's rungs from most to least preferred (``V4, V3, V2, Baseline``
-on x86, ``Sme, Baseline`` on aarch64).
+aarch64 has two kinds of optional rung. ``Sme`` is SME2 with FP64 outer
+products, compiled with ``-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64``.
+``Sve128``, ``Sve256`` and ``Sve512`` are fixed-length SVE, compiled with
+``-march=armv8.2-a+sve -msve-vector-bits=N``: in their translation units
+``Vec<T>`` is an SVE register of N bits, masks are predicates, and masked
+loads, stores and gathers are single instructions. Code compiled for one
+length is correct only where the vector length is exactly that length (on a
+longer one the register holds lanes it does not know about), so
+``supports()`` requires SVE and exactly that length, which
+``cpu_features().sve_vector_bits`` reads with ``prctl(PR_SVE_GET_VL)``: a
+Graviton3 runs ``Sve256``, a Graviton4 or Grace ``Sve128``, an A64FX
+``Sve512``, and each falls back to NEON when its length was not built.
+
+These features do not nest the way the x86 levels do: Apple M4 has SME but no
+non-streaming SVE. So the ladder is not a ranking of enumerator values.
+``supports()`` says whether a machine can run a rung, and
+``preference_order()`` lists each architecture's rungs from most to least
+preferred (``V4, V3, V2, Baseline`` on x86, ``Sme, Sve512, Sve256, Sve128,
+Baseline`` on aarch64, of which at most one SVE rung runs on a given
+machine).
 
 For ``Sme``, ``supports()`` checks only the rung's own instructions. The code
 compiled for the rung may need more: GCC before 15 makes ``+sme`` imply
@@ -599,7 +613,7 @@ Overriding the rung
 -------------------
 
 Set the environment variable ``STRIPES_ARCH`` to ``baseline``, ``v2``,
-``v3``, ``v4``, ``sme``, or one of the aliases
+``v3``, ``v4``, ``sme``, ``sve128``, ``sve256``, ``sve512``, or one of the aliases
 ``sse2``/``sse4.2``/``avx2``/``avx512``/``sme2`` to force another rung. A
 program with its own configuration can pass the same name to
 ``stripes::set_arch_override()`` before the first dispatch, which takes
@@ -645,12 +659,14 @@ The implementation wraps its entry points in the rung namespace:
 
 and one arch-neutral file declares every copy that was built and picks one.
 ``STRIPES_FOR_EACH_BUILT_RUNG`` names each built namespace,
-``STRIPES_LADDER`` expands to the five slots ``select()`` takes (with
-``nullptr`` for rungs not built) followed by what the ``sme`` copy needs
-besides SME, and ``select()`` returns the slot of the rung ``selected_arch()``
-chose. Give the dispatch definitions to the file that calls ``select()``;
-``STRIPES_LADDER_SLOTS`` is the five slots alone, for code that walks them
-itself:
+``STRIPES_LADDER`` builds a ``stripes::Ladder``, one entry per rung
+(``nullptr`` for rungs not built) and what the ``sme`` copy needs besides SME,
+and ``select()`` returns the entry for the rung ``selected_arch()`` chose. Give
+the dispatch definitions to the file that calls ``select()``. A ladder can also
+be written by hand with designated initializers, naming only the rungs there
+are, as in ``select<Fn>({.baseline = &arch_baseline::kernel, .v3 =
+&arch_v3::kernel})``, and ``Ladder::entry()`` and ``Ladder::runs()`` serve code
+that walks the rungs itself:
 
 .. code-block:: cpp
 
@@ -689,15 +705,18 @@ by every copy under one name, compiled at that copy's flags, and the program
 calls whichever copy the linker kept. Keep such code in an arch-neutral file
 and pass the kernel plain pointers and sizes, as HPTT does: its planner is
 compiled once, and only its kernels (``TransposeKernels.cpp``) once per rung.
-On Linux, ``stripes_add_rung_objects_test(<subcategory> <target>)``
+On Linux, ``stripes_add_rung_objects_test(NAME <test> TARGET <target>)``
 registers a test that fails when a per-rung object of ``<target>`` defines a
 weak symbol outside its rung's namespaces; HPTT and PackedGemm use it.
 
 The whole mechanism sits behind ``STRIPES_WITH_DISPATCH`` (default ON).
 When it is OFF, or when a compile-time pin is in effect (below), the helper
 emits a single ``native`` rung compiled at the ambient flags. On aarch64 the
-x86 rungs do not exist, so the ladder is that ``native`` rung plus ``sme``
-when the caller asks for it.
+x86 rungs do not exist, so the ladder is that ``native`` rung plus whichever
+of ``sme``, ``sve128``, ``sve256`` and ``sve512`` the caller names in
+``RUNGS``. The SVE rungs are opt-in, like ``sme``: a project measures them
+before shipping them. ``stripes_add_rung_tests`` takes the same ``RUNGS`` to
+test the ones it built.
 
 Interaction with the compile-time pinning options: building with
 ``STRIPES_NATIVE_ARCH=ON`` or ``STRIPES_TARGET_CPU=<cpu>`` raises

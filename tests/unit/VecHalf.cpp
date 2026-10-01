@@ -28,8 +28,10 @@ using namespace stripes;
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) || defined(__AVX512FP16__)
 
 TEST_CASE("FP16 Vec lane count matches register width", "[simd][half]") {
-    // 128-bit register on aarch64 → 8 lanes; 512-bit on AVX-512FP16 → 32.
-    if constexpr (has_neon_fp16)
+    // 128-bit register on aarch64 → 8 lanes, an N-bit SVE register → N / 16; 512-bit on AVX-512FP16 → 32.
+    if constexpr (has_sve)
+        CHECK(Vec<half_t>::lanes == native_bits / 16);
+    else if constexpr (has_neon_fp16)
         CHECK(Vec<half_t>::lanes == 8);
     else if constexpr (has_avx512_fp16)
         CHECK(Vec<half_t>::lanes == 32);
@@ -119,7 +121,7 @@ TEST_CASE("FP16 fmadd computes a*b + c", "[simd][half]") {
 
 TEST_CASE("BF16 Vec lane count matches register width", "[simd][bf16]") {
     if constexpr (has_neon_bf16)
-        CHECK(Vec<bfloat16_t>::lanes == 8);
+        CHECK(Vec<bfloat16_t>::lanes == (has_sve ? native_bits / 16 : 8));
     else if constexpr (has_avx512_bf16)
         CHECK(Vec<bfloat16_t>::lanes == 32);
 }

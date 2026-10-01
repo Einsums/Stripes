@@ -44,16 +44,15 @@ struct Rung {
 
 /// Every rung that was built and that this machine can run, lowest first.
 std::vector<Rung> runnable_rungs() {
-    using Fn                           = Kernels const &(*)() noexcept;
-    Fn const                   slots[] = {STRIPES_LADDER_SLOTS(kernels)};
-    simd::InstructionSet const sets[]  = {simd::InstructionSet::Baseline, simd::InstructionSet::V2, simd::InstructionSet::V3,
-                                          simd::InstructionSet::V4, simd::InstructionSet::Sme};
+    using Fn                          = Kernels const &(*)() noexcept;
+    simd::Ladder<Fn> const     ladder = STRIPES_LADDER(kernels);
+    simd::InstructionSet const sets[] = {simd::InstructionSet::Baseline, simd::InstructionSet::V2,    simd::InstructionSet::V3,
+                                         simd::InstructionSet::V4,       simd::InstructionSet::Sme,   simd::InstructionSet::Sve128,
+                                         simd::InstructionSet::Sve256,   simd::InstructionSet::Sve512};
     std::vector<Rung>          out;
-    for (int i = 0; i < 5; ++i) {
-        bool const runs = sets[i] == simd::InstructionSet::Sme ? simd::sme_rung_runs(simd::cpu_features(), STRIPES_SME_REQUIRES)
-                                                               : simd::supports(simd::cpu_features(), sets[i]);
-        if (slots[i] != nullptr && runs) {
-            out.push_back({sets[i], &slots[i]()});
+    for (simd::InstructionSet const set : sets) {
+        if (ladder.runs(simd::cpu_features(), set)) {
+            out.push_back({set, &ladder.entry(set)()});
         }
     }
     return out;

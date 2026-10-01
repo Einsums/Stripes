@@ -124,6 +124,28 @@ template <>
 STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
     _mm_stream_pd(p, v.reg);
 }
+#elif defined(STRIPES_SVE_BITS)
+// STNT1: SVE's non-temporal store.
+template <>
+STRIPES_FORCEINLINE void stream_store(float *p, Vec<float> v) {
+    svstnt1_f32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void stream_store(double *p, Vec<double> v) {
+    svstnt1_f64(svptrue_b64(), p, v.reg);
+}
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE void stream_store(half_t *p, Vec<half_t> v) {
+    svstnt1_f16(svptrue_b16(), p, v.reg);
+}
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE void stream_store(bfloat16_t *p, Vec<bfloat16_t> v) {
+    svstnt1_bf16(svptrue_b16(), p, v.reg);
+}
+#    endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // NEON has no SIMD non-temporal store, but Clang's
 // __builtin_nontemporal_store lowers to STNP (store-pair non-temporal)

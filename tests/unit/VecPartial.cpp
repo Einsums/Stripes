@@ -77,9 +77,9 @@ TEMPLATE_TEST_CASE("partial load and store stay inside an exact-size allocation"
 }
 
 TEST_CASE("native_masked_memory is true exactly where a masked load or store is one instruction", "[simd][partial]") {
-#if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(__AVX__)
+#if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(__AVX__) || defined(STRIPES_SVE_BITS)
     // AVX-512 masks every type; AVX2 has VPMASKMOV for the integers, and AVX without it moves them
-    // through VMASKMOV's float form.
+    // through VMASKMOV's float form. SVE's loads and stores take a predicate.
     STATIC_CHECK(native_masked_memory<float>);
     STATIC_CHECK(native_masked_memory<double>);
     STATIC_CHECK(native_masked_memory<int32_t>);

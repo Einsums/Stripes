@@ -160,6 +160,43 @@ STRIPES_SSE_REDUCE(reduce_add, add)
 STRIPES_SSE_REDUCE(reduce_min, min)
 STRIPES_SSE_REDUCE(reduce_max, max)
 #    undef STRIPES_SSE_REDUCE
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE float reduce_add(Vec<float> v) {
+    return svaddv_f32(svptrue_b32(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE double reduce_add(Vec<double> v) {
+    return svaddv_f64(svptrue_b64(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE int32_t reduce_add(Vec<int32_t> v) {
+    return static_cast<int32_t>(svaddv_s32(svptrue_b32(), v.reg));
+}
+template <>
+STRIPES_FORCEINLINE float reduce_min(Vec<float> v) {
+    return svminv_f32(svptrue_b32(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE double reduce_min(Vec<double> v) {
+    return svminv_f64(svptrue_b64(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE int32_t reduce_min(Vec<int32_t> v) {
+    return svminv_s32(svptrue_b32(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE float reduce_max(Vec<float> v) {
+    return svmaxv_f32(svptrue_b32(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE double reduce_max(Vec<double> v) {
+    return svmaxv_f64(svptrue_b64(), v.reg);
+}
+template <>
+STRIPES_FORCEINLINE int32_t reduce_max(Vec<int32_t> v) {
+    return svmaxv_s32(svptrue_b32(), v.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE float reduce_add(Vec<float> v) {

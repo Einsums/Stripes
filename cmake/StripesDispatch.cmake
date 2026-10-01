@@ -158,8 +158,27 @@ function(stripes_rung_flags rung out_flags out_ordinal out_ok context)
       # generation, so the half_t operations the macro selects failed to compile on the sme rung.
       set(_flags "-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64")
     endif()
+  elseif(rung MATCHES "^sve(128|256|512)$")
+    # Fixed-length SVE: -msve-vector-bits makes the vector a compile-time size, which Vec<T> needs,
+    # so each length is its own rung and runs only where the vector length is exactly that.
+    set(_bits ${CMAKE_MATCH_1})
+    if(_bits EQUAL 128)
+      set(_ordinal 5)
+    elseif(_bits EQUAL 256)
+      set(_ordinal 6)
+    else()
+      set(_ordinal 7)
+    endif()
+    if(_msvc_true_driver)
+      message(STATUS "${context}: MSVC cl has no SVE flag; dropping the ${rung} rung")
+      set(_ok FALSE)
+    elseif(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang") # clang-cl
+      set(_flags "/clang:-march=armv8.2-a+sve" "/clang:-msve-vector-bits=${_bits}")
+    else()
+      set(_flags "-march=armv8.2-a+sve" "-msve-vector-bits=${_bits}")
+    endif()
   else()
-    message(FATAL_ERROR "stripes_rung_flags: unknown rung '${rung}' (expected baseline/native/v2/v3/v4/sme)")
+    message(FATAL_ERROR "stripes_rung_flags: unknown rung '${rung}' (expected baseline/native/v2/v3/v4/sme/sve128/sve256/sve512)")
   endif()
 
   # Old compilers (pre -march=x86-64-vN: GCC < 11, Clang < 12) or drivers
@@ -167,7 +186,8 @@ function(stripes_rung_flags rung out_flags out_ordinal out_ok context)
   # the ladder degrades toward baseline, which always exists.
   if(_ok AND NOT "${_flags}" STREQUAL "")
     string(TOUPPER "${rung}" _rung_upper)
-    check_cxx_compiler_flag("${_flags}" STRIPES_RUNG_FLAG_${_rung_upper})
+    string(JOIN " " _probe ${_flags}) # one command-line string; the sve rungs have two flags
+    check_cxx_compiler_flag("${_probe}" STRIPES_RUNG_FLAG_${_rung_upper})
     if(NOT STRIPES_RUNG_FLAG_${_rung_upper})
       message(STATUS "${context}: compiler rejects '${_flags}'; dropping the ${rung} rung")
       set(_ok FALSE)
@@ -207,7 +227,7 @@ function(stripes_rung_enables rung out_sve out_sve2)
     if(_rung_ok AND NOT "${_flags}" STREQUAL "")
       include(CheckCXXSourceCompiles)
       string(TOUPPER "${rung}" _rung_upper)
-      set(CMAKE_REQUIRED_FLAGS "${_flags}")
+      string(JOIN " " CMAKE_REQUIRED_FLAGS ${_flags})
       set(CMAKE_REQUIRED_QUIET ON)
       foreach(_feature SVE SVE2)
         check_cxx_source_compiles(
@@ -269,10 +289,14 @@ function(stripes_add_dispatch_sources out_var)
   if(_pinned OR NOT STRIPES_WITH_DISPATCH)
     set(_simd_RUNGS native)
   elseif(_is_aarch64)
+    # NEON is the toolchain baseline (native); sme and the fixed-length sve rungs are the optional
+    # aarch64 rungs, each built only when asked for.
     set(_arm_rungs native)
-    if("sme" IN_LIST _simd_RUNGS)
-      list(APPEND _arm_rungs sme)
-    endif()
+    foreach(_optional sme sve128 sve256 sve512)
+      if(_optional IN_LIST _simd_RUNGS)
+        list(APPEND _arm_rungs ${_optional})
+      endif()
+    endforeach()
     set(_simd_RUNGS ${_arm_rungs})
   elseif(_is_x86)
     list(REMOVE_ITEM _simd_RUNGS sme)
@@ -379,6 +403,38 @@ function(_stripes_rung_guard_options rung out_var)
   )
 endfunction()
 
+# The rungs to register tests for on this architecture: <requested> where given, keeping those this
+# architecture has, and otherwise the defaults for x86 or aarch64.
+function(_stripes_test_rungs requested x86_default arm_default out_var)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    set(_valid baseline v2 v3 v4)
+    set(_default ${x86_default})
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    set(_valid baseline sme sve128 sve256 sve512)
+    set(_default ${arm_default})
+  else()
+    set(${out_var}
+        ""
+        PARENT_SCOPE
+    )
+    return()
+  endif()
+  if(requested)
+    set(_rungs)
+    foreach(_rung IN LISTS requested)
+      if(_rung IN_LIST _valid)
+        list(APPEND _rungs ${_rung})
+      endif()
+    endforeach()
+  else()
+    set(_rungs ${_default})
+  endif()
+  set(${out_var}
+      "${_rungs}"
+      PARENT_SCOPE
+  )
+endfunction()
+
 #:
 #: .. cmake:command:: stripes_add_rung_tests
 #:
@@ -388,21 +444,23 @@ endfunction()
 #:    .. code-block:: cmake
 #:
 #:       stripes_add_rung_tests(TARGET <executable> NAME <test-prefix>
-#:                              [ARGS <arg>...] [OUT_TESTS <var>])
+#:                              [RUNGS <rung>...] [ARGS <arg>...] [OUT_TESTS <var>])
 #:
 #:    creates ``<test-prefix>.baseline``, ``.v2``, ``.v3`` and ``.v4`` on x86
 #:    (``.baseline`` and ``.sme`` on aarch64), each running ``<executable>
 #:    <arg>...``. Each runs through the ``Stripes::rung_guard`` launcher, which
 #:    exits 77 (registered as ``SKIP_RETURN_CODE``) when the host cannot run
 #:    the rung, so ctest reports Skipped instead of silently passing at a
-#:    clamped lower rung. ``OUT_TESTS`` receives the test names, for a caller
+#:    clamped lower rung. ``RUNGS`` names the rungs instead, which an aarch64
+#:    project building the opt-in sve rungs adds (those this architecture
+#:    lacks are left out). ``OUT_TESTS`` receives the test names, for a caller
 #:    that sets further properties. ``STRIPES_ARCH`` is appended to the tests'
 #:    ``ENVIRONMENT``, so set any environment of your own before it with
 #:    ``APPEND`` too. No-op when the build is single-TU (dispatch OFF, a
 #:    compile-time CPU pin, or another architecture), where only arch_native
 #:    exists.
 function(stripes_add_rung_tests)
-  cmake_parse_arguments(_rt "" "TARGET;NAME;OUT_TESTS" "ARGS" ${ARGN})
+  cmake_parse_arguments(_rt "" "TARGET;NAME;OUT_TESTS" "ARGS;RUNGS" ${ARGN})
   if(NOT _rt_TARGET OR NOT _rt_NAME)
     message(FATAL_ERROR "stripes_add_rung_tests: TARGET and NAME are required")
   endif()
@@ -411,13 +469,7 @@ function(stripes_add_rung_tests)
      AND NOT STRIPES_NATIVE_ARCH
      AND "${STRIPES_TARGET_CPU}" STREQUAL ""
   )
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-      set(_rungs baseline v2 v3 v4)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-      set(_rungs baseline sme)
-    else()
-      set(_rungs)
-    endif()
+    _stripes_test_rungs("${_rt_RUNGS}" "baseline;v2;v3;v4" "baseline;sme" _rungs)
     foreach(_rung IN LISTS _rungs)
       set(_test "${_rt_NAME}.${_rung}")
       _stripes_rung_guard_options(${_rung} _guard_options)
@@ -448,7 +500,7 @@ endfunction()
 #:    .. code-block:: cmake
 #:
 #:       stripes_add_rung_compiled_tests(TARGET <executable> NAME <test-prefix>
-#:                                       [ARGS <arg>...] [OUT_TESTS <var>])
+#:                                       [RUNGS <rung>...] [ARGS <arg>...] [OUT_TESTS <var>])
 #:
 #:    The copies are named ``<executable>_<rung>`` and take the base target's
 #:    sources, libraries, include directories, compile definitions, options
@@ -472,11 +524,12 @@ endfunction()
 #:
 #:    The ambient build already covers the ``baseline`` rung (x86) and NEON
 #:    (aarch64), so only the rungs above it get a copy: ``v2``, ``v3`` and
-#:    ``v4`` on x86, ``sme`` on aarch64. Rungs this toolchain cannot spell are
+#:    ``v4`` on x86, ``sme``, ``sve128``, ``sve256`` and ``sve512`` on aarch64,
+#:    or those of ``RUNGS`` this architecture has. Rungs this toolchain cannot spell are
 #:    dropped, as everywhere else on the ladder. No-op when the build is
 #:    single-TU (dispatch OFF or a compile-time CPU pin).
 function(stripes_add_rung_compiled_tests)
-  cmake_parse_arguments(_ct "" "TARGET;NAME;OUT_TESTS" "ARGS" ${ARGN})
+  cmake_parse_arguments(_ct "" "TARGET;NAME;OUT_TESTS" "ARGS;RUNGS" ${ARGN})
   if(NOT _ct_TARGET OR NOT _ct_NAME)
     message(FATAL_ERROR "stripes_add_rung_compiled_tests: TARGET and NAME are required")
   endif()
@@ -486,11 +539,8 @@ function(stripes_add_rung_compiled_tests)
      AND NOT STRIPES_NATIVE_ARCH
      AND "${STRIPES_TARGET_CPU}" STREQUAL ""
   )
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-      set(_rungs v2 v3 v4)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-      set(_rungs sme)
-    endif()
+    _stripes_test_rungs("${_ct_RUNGS}" "v2;v3;v4" "sme;sve128;sve256;sve512" _rungs)
+    list(REMOVE_ITEM _rungs baseline) # the base target is the baseline copy
   endif()
 
   get_target_property(_dir ${_ct_TARGET} SOURCE_DIR)

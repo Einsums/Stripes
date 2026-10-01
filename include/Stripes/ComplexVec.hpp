@@ -128,6 +128,15 @@ template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
     return _mm_setr_pd(val.real(), val.imag());
 }
+#    elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
+    return svdupq_n_f32(val.real(), val.imag(), val.real(), val.imag());
+}
+template <>
+STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
+    return svdupq_n_f64(val.real(), val.imag());
+}
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
@@ -203,6 +212,18 @@ template <>
 STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
     auto sign = _mm_setr_pd(0.0, -0.0);
     return _mm_xor_pd(v.reg, sign);
+}
+#    elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
+    // Flip the sign of the imaginary (odd) lanes.
+    svuint32_t const sign = svreinterpret_u32_f32(svdupq_n_f32(0.f, -0.f, 0.f, -0.f));
+    return svreinterpret_f32_u32(sveor_u32_x(svptrue_b32(), svreinterpret_u32_f32(v.reg), sign));
+}
+template <>
+STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
+    svuint64_t const sign = svreinterpret_u64_f64(svdupq_n_f64(0.0, -0.0));
+    return svreinterpret_f64_u64(sveor_u64_x(svptrue_b64(), svreinterpret_u64_f64(v.reg), sign));
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
@@ -336,6 +357,29 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto t2     = _mm_mul_pd(a_ii, b_swap);
     auto neg    = _mm_set_pd(1.0, -1.0); // lanes [-1,+1]
     return _mm_add_pd(t1, _mm_mul_pd(t2, neg));
+}
+#    elif defined(STRIPES_SVE_BITS)
+// The NEON sequence, with its two multiplies and an add, so the rounding is the same: FCMLA would
+// fuse them.
+template <>
+STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
+    svbool_t const    pg     = svptrue_b32();
+    svfloat32_t const a_rr   = svtrn1_f32(a.reg, a.reg); // real parts, each twice
+    svfloat32_t const a_ii   = svtrn2_f32(a.reg, a.reg); // imaginary parts, each twice
+    svfloat32_t const b_swap = svreinterpret_f32_u64(svrevw_u64_x(svptrue_b64(), svreinterpret_u64_f32(b.reg)));
+    svfloat32_t const t1     = svmul_f32_x(pg, a_rr, b.reg);
+    svfloat32_t const t2     = svmul_f32_x(pg, a_ii, b_swap);
+    return svadd_f32_x(pg, t1, svmul_f32_x(pg, t2, svdupq_n_f32(-1.0f, 1.0f, -1.0f, 1.0f)));
+}
+template <>
+STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
+    svbool_t const    pg     = svptrue_b64();
+    svfloat64_t const a_rr   = svtrn1_f64(a.reg, a.reg);
+    svfloat64_t const a_ii   = svtrn2_f64(a.reg, a.reg);
+    svfloat64_t const b_swap = svtrn1_f64(svtrn2_f64(b.reg, b.reg), svtrn1_f64(b.reg, b.reg)); // im, re of each value
+    svfloat64_t const t1     = svmul_f64_x(pg, a_rr, b.reg);
+    svfloat64_t const t2     = svmul_f64_x(pg, a_ii, b_swap);
+    return svadd_f64_x(pg, t1, svmul_f64_x(pg, t2, svdupq_n_f64(-1.0, 1.0)));
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>

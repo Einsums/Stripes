@@ -156,6 +156,26 @@ STRIPES_AVX_MASKED_INT(int64_t, pd, double)
 STRIPES_AVX_MASKED_INT(uint64_t, pd, double)
 #        undef STRIPES_AVX_MASKED_INT
 #    endif
+#elif defined(STRIPES_SVE_BITS)
+// SVE's loads and stores take a predicate: inactive lanes are zero and their memory untouched.
+#    define STRIPES_SVE_MASKED(T, sfx)                                                                                                     \
+        template <>                                                                                                                        \
+        inline constexpr bool native_masked_memory<T> = true;                                                                              \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> loadu(T const *p, Mask<T> m) {                                                                          \
+            return svld1_##sfx(m.reg, p);                                                                                                  \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE void storeu(T *p, Vec<T> v, Mask<T> m) {                                                                       \
+            svst1_##sfx(m.reg, p, v.reg);                                                                                                  \
+        }
+STRIPES_SVE_MASKED(float, f32)
+STRIPES_SVE_MASKED(double, f64)
+STRIPES_SVE_MASKED(int32_t, s32)
+STRIPES_SVE_MASKED(uint32_t, u32)
+STRIPES_SVE_MASKED(int64_t, s64)
+STRIPES_SVE_MASKED(uint64_t, u64)
+#    undef STRIPES_SVE_MASKED
 #else
 // No masked load: the active lanes are read one at a time and assembled in registers, never through
 // a stack buffer. Writing the lanes to memory and reloading them as a vector stalls on store

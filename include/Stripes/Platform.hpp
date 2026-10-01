@@ -54,6 +54,8 @@
 #    define STRIPES_ISA_TIER_ isa_avx
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #    define STRIPES_ISA_TIER_ isa_sse2
+#elif defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
+#    define STRIPES_ISA_TIER_ isa_sve
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #    define STRIPES_ISA_TIER_ isa_neon
 #else
@@ -169,10 +171,46 @@
 #else
 #    define STRIPES_ISA_P21_
 #endif
+#if defined(__ARM_FEATURE_SVE)
+#    define STRIPES_ISA_P22_ _svefeat
+#else
+#    define STRIPES_ISA_P22_
+#endif
+#if defined(__ARM_FEATURE_SVE2)
+#    define STRIPES_ISA_P23_ _sve2
+#else
+#    define STRIPES_ISA_P23_
+#endif
+#if defined(__ARM_FEATURE_SVE_BF16)
+#    define STRIPES_ISA_P25_ _svebf16
+#else
+#    define STRIPES_ISA_P25_
+#endif
+// The fixed vector length an sve<N> rung is compiled for: each length is a different register.
+#if !defined(__ARM_FEATURE_SVE_BITS) || __ARM_FEATURE_SVE_BITS == 0
+#    define STRIPES_ISA_P24_
+#elif __ARM_FEATURE_SVE_BITS == 128
+#    define STRIPES_ISA_P24_ _vl128
+#elif __ARM_FEATURE_SVE_BITS == 256
+#    define STRIPES_ISA_P24_ _vl256
+#elif __ARM_FEATURE_SVE_BITS == 512
+#    define STRIPES_ISA_P24_ _vl512
+#elif __ARM_FEATURE_SVE_BITS == 1024
+#    define STRIPES_ISA_P24_ _vl1024
+#else
+#    define STRIPES_ISA_P24_ _vl2048
+#endif
 // END ISA TAG
 
-#define STRIPES_ISA_PASTE_(t, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21)     \
-    t##p01##p02##p03##p04##p05##p06##p07##p08##p09##p10##p11##p12##p13##p14##p15##p16##p17##p18##p19##p20##p21
+/// Compiled for fixed-length SVE (an sve<N> rung, -msve-vector-bits=N): the SVE tier, whose Vec<T> is an
+/// SVE register of this many bits. The other headers test this rather than the compiler's macro.
+#if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
+#    define STRIPES_SVE_BITS __ARM_FEATURE_SVE_BITS
+#endif
+
+#define STRIPES_ISA_PASTE_(t, p01, p02, p03, p04, p05, p06, p07, p08, p09, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21,     \
+                           p22, p23, p24, p25)                                                                                             \
+    t##p01##p02##p03##p04##p05##p06##p07##p08##p09##p10##p11##p12##p13##p14##p15##p16##p17##p18##p19##p20##p21##p22##p23##p24##p25
 #define STRIPES_ISA_EXPAND_(...) STRIPES_ISA_PASTE_(__VA_ARGS__)
 
 /// The inline namespace for this translation unit's features, such as isa_avx_avx2_fma_sse3_ssse3_sse41_sse42.
@@ -180,7 +218,8 @@
     STRIPES_ISA_EXPAND_(STRIPES_ISA_TIER_, STRIPES_ISA_P01_, STRIPES_ISA_P02_, STRIPES_ISA_P03_, STRIPES_ISA_P04_, STRIPES_ISA_P05_,       \
                         STRIPES_ISA_P06_, STRIPES_ISA_P07_, STRIPES_ISA_P08_, STRIPES_ISA_P09_, STRIPES_ISA_P10_, STRIPES_ISA_P11_,        \
                         STRIPES_ISA_P12_, STRIPES_ISA_P13_, STRIPES_ISA_P14_, STRIPES_ISA_P15_, STRIPES_ISA_P16_, STRIPES_ISA_P17_,        \
-                        STRIPES_ISA_P18_, STRIPES_ISA_P19_, STRIPES_ISA_P20_, STRIPES_ISA_P21_)
+                        STRIPES_ISA_P18_, STRIPES_ISA_P19_, STRIPES_ISA_P20_, STRIPES_ISA_P21_, STRIPES_ISA_P22_, STRIPES_ISA_P23_,        \
+                        STRIPES_ISA_P24_, STRIPES_ISA_P25_)
 
 /// Open and close the instruction-set namespace, just inside STRIPES_NAMESPACE_BEGIN().
 #define STRIPES_ISA_NAMESPACE_BEGIN() inline namespace STRIPES_ISA_NS {
@@ -316,6 +355,19 @@ inline constexpr bool has_neon =
     false;
 #endif
 
+/// Compiled for fixed-length SVE (an sve<N> rung): Vec<T> is an SVE register of STRIPES_SVE_BITS.
+inline constexpr bool has_sve =
+#if defined(STRIPES_SVE_BITS)
+    true;
+#else
+    false;
+#endif
+inline constexpr bool has_sve2 =
+#if defined(__ARM_FEATURE_SVE2)
+    true;
+#else
+    false;
+#endif
 inline constexpr bool has_neon_fp16 =
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
     true;
@@ -385,6 +437,8 @@ inline constexpr int native_bits = 512;
 inline constexpr int native_bits = 256;
 #elif defined(__SSE2__) || (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
                 inline constexpr int native_bits = 128;
+#elif defined(STRIPES_SVE_BITS)
+                inline constexpr int native_bits = STRIPES_SVE_BITS;
 #elif defined(__aarch64__) || defined(_M_ARM64)
                 inline constexpr int native_bits = 128;
 #else

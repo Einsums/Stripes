@@ -53,6 +53,15 @@ template <>
 STRIPES_FORCEINLINE Vec<double> broadcast(double val) {
     return _mm_set1_pd(val);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> broadcast(float val) {
+    return svdup_n_f32(val);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> broadcast(double val) {
+    return svdup_n_f64(val);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> broadcast(float val) {
@@ -107,6 +116,15 @@ template <>
 STRIPES_FORCEINLINE Vec<double> loadu(double const *p) {
     return _mm_loadu_pd(p);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> loadu(float const *p) {
+    return svld1_f32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> loadu(double const *p) {
+    return svld1_f64(svptrue_b64(), p);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> loadu(float const *p) {
@@ -160,6 +178,15 @@ STRIPES_FORCEINLINE Vec<float> loada(float const *p) {
 template <>
 STRIPES_FORCEINLINE Vec<double> loada(double const *p) {
     return _mm_load_pd(p);
+}
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> loada(float const *p) {
+    return svld1_f32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> loada(double const *p) {
+    return svld1_f64(svptrue_b64(), p);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // NEON vld1q does not require alignment on aarch64
@@ -216,6 +243,15 @@ template <>
 STRIPES_FORCEINLINE void storeu(double *p, Vec<double> v) {
     _mm_storeu_pd(p, v.reg);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE void storeu(float *p, Vec<float> v) {
+    svst1_f32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(double *p, Vec<double> v) {
+    svst1_f64(svptrue_b64(), p, v.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE void storeu(float *p, Vec<float> v) {
@@ -269,6 +305,15 @@ STRIPES_FORCEINLINE void storea(float *p, Vec<float> v) {
 template <>
 STRIPES_FORCEINLINE void storea(double *p, Vec<double> v) {
     _mm_store_pd(p, v.reg);
+}
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE void storea(float *p, Vec<float> v) {
+    svst1_f32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(double *p, Vec<double> v) {
+    svst1_f64(svptrue_b64(), p, v.reg);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
@@ -376,6 +421,31 @@ template <>
 STRIPES_FORCEINLINE Vec<double> mul(Vec<double> a, Vec<double> b) {
     return _mm_mul_pd(a, b);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> add(Vec<float> a, Vec<float> b) {
+    return svadd_f32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> add(Vec<double> a, Vec<double> b) {
+    return svadd_f64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> sub(Vec<float> a, Vec<float> b) {
+    return svsub_f32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> sub(Vec<double> a, Vec<double> b) {
+    return svsub_f64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> mul(Vec<float> a, Vec<float> b) {
+    return svmul_f32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> mul(Vec<double> a, Vec<double> b) {
+    return svmul_f64_x(svptrue_b64(), a.reg, b.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> add(Vec<float> a, Vec<float> b) {
@@ -468,6 +538,16 @@ STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> 
 }
 #    endif
 // ARM NEON: FMA is always available on aarch64
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
+    // FMAD: a * b + c, rounded once.
+    return svmad_f32_x(svptrue_b32(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
+    return svmad_f64_x(svptrue_b64(), a.reg, b.reg, c.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
@@ -660,6 +740,57 @@ template <>
 STRIPES_FORCEINLINE Vec<double> neg(Vec<double> a) {
     return _mm_xor_pd(a.reg, _mm_set1_pd(-0.0));
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> div(Vec<float> a, Vec<float> b) {
+    return svdiv_f32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> div(Vec<double> a, Vec<double> b) {
+    return svdiv_f64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> sqrt(Vec<float> a) {
+    return svsqrt_f32_x(svptrue_b32(), a.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> sqrt(Vec<double> a) {
+    return svsqrt_f64_x(svptrue_b64(), a.reg);
+}
+// min and max are exactly a < b ? a : b and a > b ? a : b (see above), as x86 computes them;
+// SVE's FMIN and FMAX propagate NaN instead.
+template <>
+STRIPES_FORCEINLINE Vec<float> min(Vec<float> a, Vec<float> b) {
+    return svsel_f32(svcmplt_f32(svptrue_b32(), a.reg, b.reg), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> min(Vec<double> a, Vec<double> b) {
+    return svsel_f64(svcmplt_f64(svptrue_b64(), a.reg, b.reg), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> max(Vec<float> a, Vec<float> b) {
+    return svsel_f32(svcmpgt_f32(svptrue_b32(), a.reg, b.reg), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> max(Vec<double> a, Vec<double> b) {
+    return svsel_f64(svcmpgt_f64(svptrue_b64(), a.reg, b.reg), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> abs(Vec<float> a) {
+    return svabs_f32_x(svptrue_b32(), a.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> abs(Vec<double> a) {
+    return svabs_f64_x(svptrue_b64(), a.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> neg(Vec<float> a) {
+    return svneg_f32_x(svptrue_b32(), a.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> neg(Vec<double> a) {
+    return svneg_f64_x(svptrue_b64(), a.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> div(Vec<float> a, Vec<float> b) {
@@ -806,6 +937,32 @@ STRIPES_FMA_FORMS(float, _mm_fmsub_ps, _mm_fnmadd_ps, _mm_fnmsub_ps)
 STRIPES_FMA_FORMS(double, _mm_fmsub_pd, _mm_fnmadd_pd, _mm_fnmsub_pd)
 #    endif
 #    undef STRIPES_FMA_FORMS
+#elif defined(STRIPES_SVE_BITS)
+// SVE has all four fused forms: NMSB is a * b - c, MSB is c - a * b, NMAD is -(a * b) - c.
+template <>
+STRIPES_FORCEINLINE Vec<float> fmsub(Vec<float> a, Vec<float> b, Vec<float> c) {
+    return svnmsb_f32_x(svptrue_b32(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> fmsub(Vec<double> a, Vec<double> b, Vec<double> c) {
+    return svnmsb_f64_x(svptrue_b64(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> fnmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
+    return svmsb_f32_x(svptrue_b32(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> fnmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
+    return svmsb_f64_x(svptrue_b64(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> fnmsub(Vec<float> a, Vec<float> b, Vec<float> c) {
+    return svnmad_f32_x(svptrue_b32(), a.reg, b.reg, c.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> fnmsub(Vec<double> a, Vec<double> b, Vec<double> c) {
+    return svnmad_f64_x(svptrue_b64(), a.reg, b.reg, c.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<float> fmsub(Vec<float> a, Vec<float> b, Vec<float> c) {
@@ -998,6 +1155,23 @@ STRIPES_FORCEINLINE Vec<int64_t> broadcast(int64_t v) {
 template <>
 STRIPES_FORCEINLINE Vec<uint64_t> broadcast(uint64_t v) {
     return _mm_set1_epi64x(static_cast<int64_t>(v));
+}
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> broadcast(int32_t v) {
+    return svdup_n_s32(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> broadcast(uint32_t v) {
+    return svdup_n_u32(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> broadcast(int64_t v) {
+    return svdup_n_s64(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> broadcast(uint64_t v) {
+    return svdup_n_u64(v);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
@@ -1242,6 +1416,71 @@ STRIPES_FORCEINLINE void storea(int64_t *p, Vec<int64_t> v) {
 template <>
 STRIPES_FORCEINLINE void storea(uint64_t *p, Vec<uint64_t> v) {
     _mm_store_si128(reinterpret_cast<__m128i *>(p), v.reg);
+}
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> loadu(int32_t const *p) {
+    return svld1_s32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> loadu(uint32_t const *p) {
+    return svld1_u32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> loadu(int64_t const *p) {
+    return svld1_s64(svptrue_b64(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> loadu(uint64_t const *p) {
+    return svld1_u64(svptrue_b64(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> loada(int32_t const *p) {
+    return svld1_s32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> loada(uint32_t const *p) {
+    return svld1_u32(svptrue_b32(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> loada(int64_t const *p) {
+    return svld1_s64(svptrue_b64(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> loada(uint64_t const *p) {
+    return svld1_u64(svptrue_b64(), p);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(int32_t *p, Vec<int32_t> v) {
+    svst1_s32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(uint32_t *p, Vec<uint32_t> v) {
+    svst1_u32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(int64_t *p, Vec<int64_t> v) {
+    svst1_s64(svptrue_b64(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(uint64_t *p, Vec<uint64_t> v) {
+    svst1_u64(svptrue_b64(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(int32_t *p, Vec<int32_t> v) {
+    svst1_s32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(uint32_t *p, Vec<uint32_t> v) {
+    svst1_u32(svptrue_b32(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(int64_t *p, Vec<int64_t> v) {
+    svst1_s64(svptrue_b64(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(uint64_t *p, Vec<uint64_t> v) {
+    svst1_u64(svptrue_b64(), p, v.reg);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
@@ -1563,6 +1802,48 @@ STRIPES_FORCEINLINE Vec<uint32_t> mul(Vec<uint32_t> a, Vec<uint32_t> b) {
 }
 #    endif
 // i64/u64 mul not implemented; needs AVX-512DQ.
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> add(Vec<int32_t> a, Vec<int32_t> b) {
+    return svadd_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> add(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svadd_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> add(Vec<int64_t> a, Vec<int64_t> b) {
+    return svadd_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> add(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return svadd_u64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> sub(Vec<int32_t> a, Vec<int32_t> b) {
+    return svsub_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> sub(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svsub_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> sub(Vec<int64_t> a, Vec<int64_t> b) {
+    return svsub_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> sub(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return svsub_u64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> mul(Vec<int32_t> a, Vec<int32_t> b) {
+    return svmul_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> mul(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svmul_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+// i64/u64 mul is left out, as on the other ISAs that lack it, so code using it fails to link everywhere alike.
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<int32_t> add(Vec<int32_t> a, Vec<int32_t> b) {
@@ -1720,6 +2001,56 @@ STRIPES_FORCEINLINE Vec<T> bitwise_xor(Vec<T> a, Vec<T> b);
         STRIPES_FORCEINLINE Vec<T> bitwise_xor(Vec<T> a, Vec<T> b) {                                                                       \
             return _mm_xor_si128(a.reg, b.reg);                                                                                            \
         }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> bitwise_and(Vec<int32_t> a, Vec<int32_t> b) {
+    return svand_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> bitwise_or(Vec<int32_t> a, Vec<int32_t> b) {
+    return svorr_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> bitwise_xor(Vec<int32_t> a, Vec<int32_t> b) {
+    return sveor_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> bitwise_and(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svand_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> bitwise_or(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svorr_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> bitwise_xor(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return sveor_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> bitwise_and(Vec<int64_t> a, Vec<int64_t> b) {
+    return svand_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> bitwise_or(Vec<int64_t> a, Vec<int64_t> b) {
+    return svorr_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> bitwise_xor(Vec<int64_t> a, Vec<int64_t> b) {
+    return sveor_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> bitwise_and(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return svand_u64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> bitwise_or(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return svorr_u64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> bitwise_xor(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return sveor_u64_x(svptrue_b64(), a.reg, b.reg);
+}
+#    define STRIPES_INT_BITWISE(T) /* nothing; SVE expanded above per type */
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // NEON: vand/vorr/veor, typed by signedness and width but all alias the same hw op.
 #    define STRIPES_INT_BITWISE_ONE(T, AND_F, OR_F, XOR_F)                                                                                 \
@@ -1882,6 +2213,39 @@ STRIPES_FORCEINLINE Vec<int64_t> shift_right(Vec<int64_t> v) {
 template <int N>
 STRIPES_FORCEINLINE Vec<uint64_t> shift_right(Vec<uint64_t> v) {
     return _mm_srli_epi64(v.reg, N);
+}
+#elif defined(STRIPES_SVE_BITS)
+template <int N>
+STRIPES_FORCEINLINE Vec<int32_t> shift_left(Vec<int32_t> v) {
+    return svlsl_n_s32_x(svptrue_b32(), v.reg, N);
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_left(Vec<uint32_t> v) {
+    return svlsl_n_u32_x(svptrue_b32(), v.reg, N);
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int64_t> shift_left(Vec<int64_t> v) {
+    return svlsl_n_s64_x(svptrue_b64(), v.reg, N);
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_left(Vec<uint64_t> v) {
+    return svlsl_n_u64_x(svptrue_b64(), v.reg, N);
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int32_t> shift_right(Vec<int32_t> v) {
+    return svreinterpret_s32_u32(svlsr_n_u32_x(svptrue_b32(), svreinterpret_u32_s32(v.reg), N));
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_right(Vec<uint32_t> v) {
+    return svlsr_n_u32_x(svptrue_b32(), v.reg, N);
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int64_t> shift_right(Vec<int64_t> v) {
+    return svreinterpret_s64_u64(svlsr_n_u64_x(svptrue_b64(), svreinterpret_u64_s64(v.reg), N));
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_right(Vec<uint64_t> v) {
+    return svlsr_n_u64_x(svptrue_b64(), v.reg, N);
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // NEON: vshlq_n_* and vshrq_n_* require N to be a literal in [1..bits].
@@ -2061,6 +2425,40 @@ STRIPES_SSE_VAR_SHIFTS_64(int64_t)
 STRIPES_SSE_VAR_SHIFTS_64(uint64_t)
 #    undef STRIPES_SSE_VAR_SHIFTS_32
 #    undef STRIPES_SSE_VAR_SHIFTS_64
+#elif defined(STRIPES_SVE_BITS)
+// LSL and LSR by a per-lane amount (unsigned); an amount of the lane width or more gives 0, as on x86.
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> shift_left(Vec<int32_t> v, Vec<int32_t> count) {
+    return svlsl_s32_x(svptrue_b32(), v.reg, svreinterpret_u32_s32(count.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_left(Vec<uint32_t> v, Vec<uint32_t> count) {
+    return svlsl_u32_x(svptrue_b32(), v.reg, count.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> shift_left(Vec<int64_t> v, Vec<int64_t> count) {
+    return svlsl_s64_x(svptrue_b64(), v.reg, svreinterpret_u64_s64(count.reg));
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_left(Vec<uint64_t> v, Vec<uint64_t> count) {
+    return svlsl_u64_x(svptrue_b64(), v.reg, count.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> shift_right(Vec<int32_t> v, Vec<int32_t> count) {
+    return svreinterpret_s32_u32(svlsr_u32_x(svptrue_b32(), svreinterpret_u32_s32(v.reg), svreinterpret_u32_s32(count.reg)));
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_right(Vec<uint32_t> v, Vec<uint32_t> count) {
+    return svlsr_u32_x(svptrue_b32(), v.reg, count.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> shift_right(Vec<int64_t> v, Vec<int64_t> count) {
+    return svreinterpret_s64_u64(svlsr_u64_x(svptrue_b64(), svreinterpret_u64_s64(v.reg), svreinterpret_u64_s64(count.reg)));
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_right(Vec<uint64_t> v, Vec<uint64_t> count) {
+    return svlsr_u64_x(svptrue_b64(), v.reg, count.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // VSHL shifts left by a signed per-lane amount and right by a negative one. Its amount is always a
 // signed vector, so the unsigned counts are reinterpreted, and the logical right shift of a signed
@@ -2164,6 +2562,11 @@ using mask_reg_t = std::conditional_t<sizeof(T) == 4, __mmask16, __mmask8>;
 #    define STRIPES_MASK_IS_VECTOR 1
 template <typename T>
 using mask_reg_t = typename VecTraits<T>::reg_type;
+#elif defined(STRIPES_SVE_BITS)
+#    define STRIPES_MASK_IS_PRED 1
+/// A predicate. Every Mask is the same register type; which of its bits count depends on T's size.
+template <typename T>
+using mask_reg_t = sve_pred;
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #    define STRIPES_MASK_IS_VECTOR 1
 template <typename T>
@@ -2336,6 +2739,21 @@ STRIPES_FORCEINLINE __m128i mask_xor(__m128i a, __m128i b) {
 STRIPES_FORCEINLINE __m128i mask_andnot(__m128i a, __m128i b) {
     return _mm_andnot_si128(b, a);
 }
+#elif defined(STRIPES_MASK_IS_PRED)
+// The predicate logic over every bit: the bits a lane does not use are zero in every predicate
+// the comparisons and first_n make, and these keep them zero.
+STRIPES_FORCEINLINE sve_pred mask_and(sve_pred a, sve_pred b) {
+    return svand_b_z(svptrue_b8(), a, b);
+}
+STRIPES_FORCEINLINE sve_pred mask_or(sve_pred a, sve_pred b) {
+    return svorr_b_z(svptrue_b8(), a, b);
+}
+STRIPES_FORCEINLINE sve_pred mask_xor(sve_pred a, sve_pred b) {
+    return sveor_b_z(svptrue_b8(), a, b);
+}
+STRIPES_FORCEINLINE sve_pred mask_andnot(sve_pred a, sve_pred b) {
+    return svbic_b_z(svptrue_b8(), a, b);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 STRIPES_FORCEINLINE uint32x4_t mask_and(uint32x4_t a, uint32x4_t b) {
     return vandq_u32(a, b);
@@ -2403,6 +2821,12 @@ STRIPES_FORCEINLINE Mask<T, N> first_n(std::size_t n) {
 #if defined(STRIPES_MASK_IS_K)
         using K = typename Mask<T>::reg_type;
         return Mask<T>(k == static_cast<std::size_t>(L) ? static_cast<K>((1u << L) - 1u) : static_cast<K>((1u << k) - 1u));
+#elif defined(STRIPES_MASK_IS_PRED)
+        if constexpr (sizeof(T) == 4) {
+            return Mask<T>(svwhilelt_b32_u64(0, k));
+        } else {
+            return Mask<T>(svwhilelt_b64_u64(0, k));
+        }
 #elif defined(STRIPES_MASK_IS_VECTOR)
         using R                  = typename Mask<T>::reg_type;
         constexpr std::size_t wl = sizeof(T) / sizeof(int32_t); // words per lane
@@ -2434,6 +2858,13 @@ STRIPES_FORCEINLINE uint64_t to_bits(Mask<T> m) {
         return static_cast<uint64_t>(_mm256_movemask_ps(std::bit_cast<__m256>(m.reg)));
     } else {
         return static_cast<uint64_t>(_mm256_movemask_pd(std::bit_cast<__m256d>(m.reg)));
+    }
+#elif defined(STRIPES_MASK_IS_PRED)
+    // Lane i's weight 2^i, summed over the active lanes.
+    if constexpr (sizeof(T) == 4) {
+        return svaddv_u32(m.reg, svlsl_u32_x(svptrue_b32(), svdup_n_u32(1), svindex_u32(0, 1)));
+    } else {
+        return svaddv_u64(m.reg, svlsl_u64_x(svptrue_b64(), svdup_n_u64(1), svindex_u64(0, 1)));
     }
 #elif defined(__aarch64__) || defined(_M_ARM64)
     if constexpr (sizeof(T) == 4) {
@@ -2469,6 +2900,15 @@ STRIPES_FORCEINLINE Mask<T, N> mask_from_bits(uint64_t bits) {
 #if defined(STRIPES_MASK_IS_K)
         using K = typename Mask<T>::reg_type;
         return Mask<T>(static_cast<K>(bits & ((1u << L) - 1u)));
+#elif defined(STRIPES_MASK_IS_PRED)
+        // Lane i is set where bit i is (no float mask of 512 bits or less has more than 16 lanes).
+        if constexpr (sizeof(T) == 4) {
+            svuint32_t const lane = svlsr_u32_x(svptrue_b32(), svdup_n_u32(static_cast<uint32_t>(bits)), svindex_u32(0, 1));
+            return Mask<T>(svcmpne_n_u32(svptrue_b32(), svand_n_u32_x(svptrue_b32(), lane, 1u), 0u));
+        } else {
+            svuint64_t const lane = svlsr_u64_x(svptrue_b64(), svdup_n_u64(bits), svindex_u64(0, 1));
+            return Mask<T>(svcmpne_n_u64(svptrue_b64(), svand_n_u64_x(svptrue_b64(), lane, 1u), 0u));
+        }
 #elif defined(STRIPES_MASK_IS_VECTOR)
         using W = std::conditional_t<sizeof(T) == 4, int32_t, int64_t>;
         W lanes_bits[L];
@@ -2500,6 +2940,14 @@ STRIPES_FORCEINLINE Vec<T> to_vec(Mask<T> m) {
     } else {
         return std::bit_cast<typename Vec<T>::reg_type>(_mm512_maskz_set1_epi64(m.reg, -1));
     }
+#elif defined(STRIPES_MASK_IS_PRED)
+    if constexpr (sizeof(T) == 4) {
+        detail::sve_u32 const ones = svdup_n_u32_z(m.reg, ~0u);
+        return std::bit_cast<typename Vec<T>::reg_type>(ones);
+    } else {
+        detail::sve_u64 const ones = svdup_n_u64_z(m.reg, ~uint64_t{0});
+        return std::bit_cast<typename Vec<T>::reg_type>(ones);
+    }
 #elif defined(STRIPES_MASK_IS_VECTOR)
     return std::bit_cast<typename Vec<T>::reg_type>(m.reg);
 #else
@@ -2512,6 +2960,8 @@ template <typename T>
 STRIPES_FORCEINLINE bool any(Mask<T> m) {
 #if defined(STRIPES_MASK_IS_K)
     return m.reg != 0;
+#elif defined(STRIPES_MASK_IS_PRED)
+    return svptest_any(detail::sve_all<T>(), m.reg);
 #elif defined(__aarch64__) || defined(_M_ARM64)
     // Every lane is all-ones or zero, so the 32-bit view answers for 64-bit lanes too.
     if constexpr (sizeof(T) == 4) {
@@ -2528,7 +2978,9 @@ STRIPES_FORCEINLINE bool any(Mask<T> m) {
 
 template <typename T>
 STRIPES_FORCEINLINE bool all(Mask<T> m) {
-#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(STRIPES_MASK_IS_PRED)
+    return !svptest_any(detail::sve_all<T>(), svnot_b_z(detail::sve_all<T>(), m.reg));
+#elif defined(__aarch64__) || defined(_M_ARM64)
     if constexpr (sizeof(T) == 4) {
         return vminvq_u32(m.reg) != 0;
     } else {
@@ -2970,6 +3422,85 @@ STRIPES_X86_ANDNOT_INT(int64_t)
 STRIPES_X86_ANDNOT_INT(uint64_t)
 #    undef STRIPES_X86_ANDNOT_INT
 
+#elif defined(STRIPES_SVE_BITS)
+// SVE comparisons give a predicate, which is what Mask holds.
+#    define STRIPES_SVE_CMP(T, sfx, pb)                                                                                                    \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_eq(Vec<T> a, Vec<T> b) {                                                                           \
+            return Mask<T>(svcmpeq_##sfx(svptrue_##pb(), a.reg, b.reg));                                                                   \
+        }                                                                                                                                  \
+        /* not-equal as the inverse of the ordered equal, so a NaN lane is true, as on the other ISAs */                                   \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_ne(Vec<T> a, Vec<T> b) {                                                                           \
+            return !cmp_eq(a, b);                                                                                                          \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_lt(Vec<T> a, Vec<T> b) {                                                                           \
+            return Mask<T>(svcmplt_##sfx(svptrue_##pb(), a.reg, b.reg));                                                                   \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_le(Vec<T> a, Vec<T> b) {                                                                           \
+            return Mask<T>(svcmple_##sfx(svptrue_##pb(), a.reg, b.reg));                                                                   \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_gt(Vec<T> a, Vec<T> b) {                                                                           \
+            return Mask<T>(svcmpgt_##sfx(svptrue_##pb(), a.reg, b.reg));                                                                   \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_ge(Vec<T> a, Vec<T> b) {                                                                           \
+            return Mask<T>(svcmpge_##sfx(svptrue_##pb(), a.reg, b.reg));                                                                   \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> select(Mask<T> m, Vec<T> a, Vec<T> b) {                                                                 \
+            return svsel_##sfx(m.reg, a.reg, b.reg);                                                                                       \
+        }
+STRIPES_SVE_CMP(float, f32, b32)
+STRIPES_SVE_CMP(double, f64, b64)
+STRIPES_SVE_CMP(int32_t, s32, b32)
+STRIPES_SVE_CMP(uint32_t, u32, b32)
+STRIPES_SVE_CMP(int64_t, s64, b64)
+STRIPES_SVE_CMP(uint64_t, u64, b64)
+#    undef STRIPES_SVE_CMP
+#    define STRIPES_SVE_FLOAT_LOGIC(T, sfx, u, pb)                                                                                         \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_and(Vec<T> a, Vec<T> b) {                                                                       \
+            return svreinterpret_##sfx##_##u(                                                                                              \
+                svand_##u##_x(svptrue_##pb(), svreinterpret_##u##_##sfx(a.reg), svreinterpret_##u##_##sfx(b.reg)));                        \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_or(Vec<T> a, Vec<T> b) {                                                                        \
+            return svreinterpret_##sfx##_##u(                                                                                              \
+                svorr_##u##_x(svptrue_##pb(), svreinterpret_##u##_##sfx(a.reg), svreinterpret_##u##_##sfx(b.reg)));                        \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_xor(Vec<T> a, Vec<T> b) {                                                                       \
+            return svreinterpret_##sfx##_##u(                                                                                              \
+                sveor_##u##_x(svptrue_##pb(), svreinterpret_##u##_##sfx(a.reg), svreinterpret_##u##_##sfx(b.reg)));                        \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_andnot(Vec<T> a, Vec<T> b) {                                                                    \
+            return svreinterpret_##sfx##_##u(                                                                                              \
+                svbic_##u##_x(svptrue_##pb(), svreinterpret_##u##_##sfx(a.reg), svreinterpret_##u##_##sfx(b.reg)));                        \
+        }
+STRIPES_SVE_FLOAT_LOGIC(float, f32, u32, b32)
+STRIPES_SVE_FLOAT_LOGIC(double, f64, u64, b64)
+#    undef STRIPES_SVE_FLOAT_LOGIC
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> bitwise_andnot(Vec<int32_t> a, Vec<int32_t> b) {
+    return svbic_s32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> bitwise_andnot(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return svbic_u32_x(svptrue_b32(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int64_t> bitwise_andnot(Vec<int64_t> a, Vec<int64_t> b) {
+    return svbic_s64_x(svptrue_b64(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint64_t> bitwise_andnot(Vec<uint64_t> a, Vec<uint64_t> b) {
+    return svbic_u64_x(svptrue_b64(), a.reg, b.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 // NEON comparisons give an unsigned lane mask, which is what Mask holds.
 template <>
@@ -3303,6 +3834,47 @@ STRIPES_FORCEINLINE Vec<T> sse2_trunc(Vec<T> x) {
 STRIPES_SSE2_ROUNDING(float)
 STRIPES_SSE2_ROUNDING(double)
 #    undef STRIPES_SSE2_ROUNDING
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> floor(Vec<float> x) {
+    return svrintm_f32_x(svptrue_b32(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> ceil(Vec<float> x) {
+    return svrintp_f32_x(svptrue_b32(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> trunc(Vec<float> x) {
+    return svrintz_f32_x(svptrue_b32(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> round(Vec<float> x) {
+    return svrinta_f32_x(svptrue_b32(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<float> round_even(Vec<float> x) {
+    return svrintn_f32_x(svptrue_b32(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> floor(Vec<double> x) {
+    return svrintm_f64_x(svptrue_b64(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> ceil(Vec<double> x) {
+    return svrintp_f64_x(svptrue_b64(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> trunc(Vec<double> x) {
+    return svrintz_f64_x(svptrue_b64(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> round(Vec<double> x) {
+    return svrinta_f64_x(svptrue_b64(), x.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> round_even(Vec<double> x) {
+    return svrintn_f64_x(svptrue_b64(), x.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #    define STRIPES_NEON_ROUNDING(T, sfx)                                                                                                  \
         template <>                                                                                                                        \
@@ -3446,6 +4018,31 @@ template <>
 STRIPES_FORCEINLINE void storeu(uint8_t *p, Vec<uint8_t> v) {
     _mm_storeu_si128(reinterpret_cast<__m128i *>(p), v.reg);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<int8_t> broadcast(int8_t v) {
+    return svdup_n_s8(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int8_t> loadu(int8_t const *p) {
+    return svld1_s8(svptrue_b8(), p);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(int8_t *p, Vec<int8_t> v) {
+    svst1_s8(svptrue_b8(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint8_t> broadcast(uint8_t v) {
+    return svdup_n_u8(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint8_t> loadu(uint8_t const *p) {
+    return svld1_u8(svptrue_b8(), p);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(uint8_t *p, Vec<uint8_t> v) {
+    svst1_u8(svptrue_b8(), p, v.reg);
+}
 #elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
 STRIPES_FORCEINLINE Vec<int8_t> broadcast(int8_t v) {
@@ -3526,7 +4123,17 @@ template <typename T>
 STRIPES_FORCEINLINE Vec<int32_t> dot_product_uu(Vec<int32_t> acc, Vec<T> a, Vec<T> b);
 STRIPES_FORCEINLINE Vec<int32_t> dot_product_us(Vec<int32_t> acc, Vec<uint8_t> a, Vec<int8_t> b);
 
-#if defined(__ARM_FEATURE_DOTPROD)
+#if defined(STRIPES_SVE_BITS)
+// SDOT and UDOT are base SVE, so every sve<N> rung has the signed and unsigned forms.
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> dot_product_ss(Vec<int32_t> acc, Vec<int8_t> a, Vec<int8_t> b) {
+    return svdot_s32(acc.reg, a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> dot_product_uu(Vec<int32_t> acc, Vec<uint8_t> a, Vec<uint8_t> b) {
+    return svreinterpret_s32_u32(svdot_u32(svreinterpret_u32_s32(acc.reg), a.reg, b.reg));
+}
+#elif defined(__ARM_FEATURE_DOTPROD)
 template <>
 STRIPES_FORCEINLINE Vec<int32_t> dot_product_ss(Vec<int32_t> acc, Vec<int8_t> a, Vec<int8_t> b) {
     return vdotq_s32(acc.reg, a.reg, b.reg);
@@ -3539,7 +4146,13 @@ STRIPES_FORCEINLINE Vec<int32_t> dot_product_uu(Vec<int32_t> acc, Vec<uint8_t> a
 }
 #endif
 
-#if defined(__ARM_FEATURE_MATMUL_INT8)
+#if defined(STRIPES_SVE_BITS) && defined(__ARM_FEATURE_MATMUL_INT8)
+STRIPES_FORCEINLINE Vec<int32_t> dot_product_us(Vec<int32_t> acc, Vec<uint8_t> a, Vec<int8_t> b) {
+    return svusdot_s32(acc.reg, a.reg, b.reg);
+}
+#elif defined(STRIPES_SVE_BITS)
+// No USDOT without I8MM.
+#elif defined(__ARM_FEATURE_MATMUL_INT8)
 STRIPES_FORCEINLINE Vec<int32_t> dot_product_us(Vec<int32_t> acc, Vec<uint8_t> a, Vec<int8_t> b) {
     return vusdotq_s32(acc.reg, a.reg, b.reg);
 }
@@ -3565,7 +4178,44 @@ STRIPES_FORCEINLINE Vec<int32_t> dot_product_us(Vec<int32_t> acc, Vec<uint8_t> a
 // need dedicated specializations in Shuffle.hpp / Gather.hpp / ComplexVec.hpp.
 // ===========================================================================
 
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+#if defined(STRIPES_SVE_BITS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE Vec<half_t> broadcast(half_t v) {
+    return svdup_n_f16(v);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> loadu(half_t const *p) {
+    return svld1_f16(svptrue_b16(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> loada(half_t const *p) {
+    return svld1_f16(svptrue_b16(), p);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(half_t *p, Vec<half_t> v) {
+    svst1_f16(svptrue_b16(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(half_t *p, Vec<half_t> v) {
+    svst1_f16(svptrue_b16(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> add(Vec<half_t> a, Vec<half_t> b) {
+    return svadd_f16_x(svptrue_b16(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> sub(Vec<half_t> a, Vec<half_t> b) {
+    return svsub_f16_x(svptrue_b16(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> mul(Vec<half_t> a, Vec<half_t> b) {
+    return svmul_f16_x(svptrue_b16(), a.reg, b.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<half_t> fmadd(Vec<half_t> a, Vec<half_t> b, Vec<half_t> c) {
+    return svmad_f16_x(svptrue_b16(), a.reg, b.reg, c.reg);
+}
+#elif defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
 template <>
 STRIPES_FORCEINLINE Vec<half_t> broadcast(half_t v) {
     return vdupq_n_f16(v);
@@ -3656,7 +4306,26 @@ STRIPES_FORCEINLINE Vec<half_t> fmadd(Vec<half_t> a, Vec<half_t> b, Vec<half_t> 
 // or AVX-512 VDPBF16PS.
 // ===========================================================================
 
-#if defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+#if defined(STRIPES_SVE_BITS)
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE Vec<bfloat16_t> loadu(bfloat16_t const *p) {
+    return svld1_bf16(svptrue_b16(), p);
+}
+template <>
+STRIPES_FORCEINLINE Vec<bfloat16_t> loada(bfloat16_t const *p) {
+    return svld1_bf16(svptrue_b16(), p);
+}
+template <>
+STRIPES_FORCEINLINE void storeu(bfloat16_t *p, Vec<bfloat16_t> v) {
+    svst1_bf16(svptrue_b16(), p, v.reg);
+}
+template <>
+STRIPES_FORCEINLINE void storea(bfloat16_t *p, Vec<bfloat16_t> v) {
+    svst1_bf16(svptrue_b16(), p, v.reg);
+}
+#    endif
+#elif defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
 template <>
 STRIPES_FORCEINLINE Vec<bfloat16_t> loadu(bfloat16_t const *p) {
     return vld1q_bf16(p);

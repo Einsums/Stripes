@@ -92,6 +92,9 @@ struct CpuFeatures {
 
     bool sve  = false; ///< FEAT_SVE: non-streaming Scalable Vector Extension.
     bool sve2 = false; ///< FEAT_SVE2: non-streaming SVE2.
+    /// The SVE vector length this thread runs at, in bits (0 without SVE). The sve<N> rungs are
+    /// compiled for one length and run only where it is exactly that.
+    int sve_vector_bits = 0;
 
     bool sme        = false; ///< FEAT_SME: Scalable Matrix Extension (streaming SVE + ZA tiles).
     bool sme2       = false; ///< FEAT_SME2: SME2 (multi-vector, required by the sme rung).
@@ -142,6 +145,9 @@ enum class InstructionSet : std::uint8_t {
     V3       = 2, ///< x86-64-v3 (AVX2 + FMA era).
     V4       = 3, ///< x86-64-v4 (AVX-512 era).
     Sme      = 4, ///< aarch64 SME2 + FP64 FMOPA (Apple M4 era).
+    Sve128   = 5, ///< aarch64 SVE, compiled for a vector length of exactly 128 bits (Graviton4, Grace).
+    Sve256   = 6, ///< aarch64 SVE, compiled for exactly 256 bits (Graviton3).
+    Sve512   = 7, ///< aarch64 SVE, compiled for exactly 512 bits (A64FX).
 };
 
 /**
@@ -292,25 +298,6 @@ using MessageHandler = void (*)(MessageLevel level, std::string_view message);
  */
 STRIPES_EXPORT void set_message_handler(MessageHandler handler) noexcept;
 
-namespace dispatch_detail {
-/// Position of @p set in the argument list select() takes.
-constexpr int ladder_slot(InstructionSet set) noexcept {
-    switch (set) {
-    case InstructionSet::V2:
-        return 1;
-    case InstructionSet::V3:
-        return 2;
-    case InstructionSet::V4:
-        return 3;
-    case InstructionSet::Sme:
-        return 4;
-    case InstructionSet::Baseline:
-        break;
-    }
-    return 0;
-}
-} // namespace dispatch_detail
-
 /**
  * @brief What the code compiled for the sme rung needs besides SME itself.
  *
@@ -335,73 +322,99 @@ inline bool sme_rung_runs(CpuFeatures const &features, SmeRungRequires requires_
 }
 
 /**
+ * @brief One kernel's entry point for each rung, as select() takes them.
+ *
+ * A rung that was not built is nullptr; `baseline` must always be set. STRIPES_LADDER(fn) fills
+ * one from the copies stripes_add_dispatch_sources() built, so a call site does not change when
+ * a rung is added. Written by hand, designated initializers name only the rungs there are:
+ *
+ * @code
+ * static KernelFn const kernel = stripes::select<KernelFn>({.baseline = &arch_baseline::kernel, .v3 = &arch_v3::kernel});
+ * @endcode
+ */
+template <typename F>
+struct Ladder {
+    F               baseline = nullptr;
+    F               v2       = nullptr;
+    F               v3       = nullptr;
+    F               v4       = nullptr;
+    F               sme      = nullptr;
+    F               sve128   = nullptr;
+    F               sve256   = nullptr;
+    F               sve512   = nullptr;
+    SmeRungRequires sme_requires{}; ///< What the sme entry's code needs besides SME; the default assumes the worst.
+
+    /// The entry for @p set, nullptr if it was not built.
+    constexpr F entry(InstructionSet set) const noexcept {
+        switch (set) {
+        case InstructionSet::Baseline:
+            return baseline;
+        case InstructionSet::V2:
+            return v2;
+        case InstructionSet::V3:
+            return v3;
+        case InstructionSet::V4:
+            return v4;
+        case InstructionSet::Sme:
+            return sme;
+        case InstructionSet::Sve128:
+            return sve128;
+        case InstructionSet::Sve256:
+            return sve256;
+        case InstructionSet::Sve512:
+            return sve512;
+        }
+        return nullptr;
+    }
+
+    /// Whether @p set's entry was built and runs on @p features (with the sme entry's requirements).
+    bool runs(CpuFeatures const &features, InstructionSet set) const noexcept {
+        if (entry(set) == nullptr) {
+            return false;
+        }
+        return set == InstructionSet::Sme ? sme_rung_runs(features, sme_requires) : supports(features, set);
+    }
+};
+
+/**
  * @brief select() against an explicit feature set and starting rung.
  *
- * Walks `preference_order(features.arch)` from @p start onward and returns
- * the first entry that was built (not nullptr) and that supports() accepts.
- * The support test matters on aarch64, where a rung later in the list is not
- * implied by an earlier one. select() calls this with cpu_features() and
+ * Walks `preference_order(features.arch)` from @p start onward and returns the first entry that
+ * was built and runs here (Ladder::runs). The test matters on aarch64, where a rung later in the
+ * list is not implied by an earlier one. select() calls this with cpu_features() and
  * selected_arch(); tests call it directly with synthetic machines.
- *
- * @param[in] features The machine to dispatch for.
- * @param[in] start The rung to start from, normally selected_arch().
- * @param[in] baseline Entry point for the Baseline rung; must not be nullptr.
- * @param[in] v2 Entry point for the V2 rung, or nullptr if not built.
- * @param[in] v3 Entry point for the V3 rung, or nullptr if not built.
- * @param[in] v4 Entry point for the V4 rung, or nullptr if not built.
- * @param[in] sme Entry point for the Sme rung, or nullptr if not built.
- * @param[in] sme_requires What the sme entry's code needs besides SME.
  *
  * @return The entry point to call; never nullptr.
  */
 template <typename F>
-F select_for(CpuFeatures const &features, InstructionSet start, F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr, F sme = nullptr,
-             SmeRungRequires sme_requires = {}) {
-    F const slots[] = {baseline, v2, v3, v4, sme};
-    bool    reached = false;
+F select_for(CpuFeatures const &features, InstructionSet start, Ladder<F> const &ladder) {
+    bool reached = false;
     for (InstructionSet const rung : preference_order(features.arch)) {
         reached = reached || rung == start;
-        if (!reached) {
-            continue;
-        }
-        F const    entry = slots[dispatch_detail::ladder_slot(rung)];
-        bool const runs  = rung == InstructionSet::Sme ? sme_rung_runs(features, sme_requires) : supports(features, rung);
-        if (entry != nullptr && runs) {
-            return entry;
+        if (reached && ladder.runs(features, rung)) {
+            return ladder.entry(rung);
         }
     }
-    return baseline;
+    return ladder.baseline;
 }
 
 /**
  * @brief Pick the best available entry point for the selected rung.
  *
- * Generic dispatch helper for modules that compile a kernel once per rung:
- * pass one entry point per rung (nullptr for rungs the module does not
- * build) and get back the entry for the most preferred built rung at or
- * after selected_arch() in preference_order(). Falls through nullptr
- * entries, so a module may build any subset of rungs; `baseline` must
- * always be provided.
+ * Generic dispatch helper for modules that compile a kernel once per rung: given each rung's
+ * entry point (nullptr for rungs not built), it returns the entry for the most preferred built
+ * rung at or after selected_arch() in preference_order() that runs on this machine. Resolve it
+ * once and keep it; the choice cannot change while the program runs.
  *
  * @code
- * using KernelFn = void (*)(float const *, float *, std::size_t);
- * static KernelFn const kernel = stripes::select<KernelFn>(
- *     &arch_baseline::kernel, &arch_v2::kernel, &arch_v3::kernel, &arch_v4::kernel);
+ * static KernelFn const kernel = stripes::select<KernelFn>(STRIPES_LADDER(kernel));
  * @endcode
- *
- * @param[in] baseline Entry point for the Baseline rung; must not be nullptr.
- * @param[in] v2 Entry point for the V2 rung, or nullptr if not built.
- * @param[in] v3 Entry point for the V3 rung, or nullptr if not built.
- * @param[in] v4 Entry point for the V4 rung, or nullptr if not built.
- * @param[in] sme Entry point for the Sme rung, or nullptr if not built.
- * @param[in] sme_requires What the sme entry's code needs besides SME; STRIPES_LADDER() passes the
- *            probed answer, and the default assumes the worst.
  *
  * @return The entry point to call; never nullptr.
  */
 template <typename F>
-F select(F baseline, F v2 = nullptr, F v3 = nullptr, F v4 = nullptr, F sme = nullptr, SmeRungRequires sme_requires = {}) {
-    return select_for<F>(cpu_features(), selected_arch(), baseline, v2, v3, v4, sme, sme_requires);
+F select(Ladder<F> const &ladder) {
+    return select_for<F>(cpu_features(), selected_arch(), ladder);
 }
 
 STRIPES_NAMESPACE_END()

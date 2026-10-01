@@ -201,6 +201,39 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 // ---------------------------------------------------------------------------
 // ARM NEON (aarch64, including Apple Silicon): 128-bit registers
 // ---------------------------------------------------------------------------
+#elif defined(STRIPES_SVE_BITS)
+
+// An L x L transpose for any L, in log2(L) rounds: each round interleaves rows i and i + L/2 (ZIP1 and
+// ZIP2) into rows 2i and 2i + 1, and after the last, row j holds column j.
+#    define STRIPES_SVE_TRANSPOSE(T, sfx)                                                                                                  \
+        STRIPES_FORCEINLINE void transpose_inplace(Vec<T> *rows) {                                                                         \
+            constexpr int L = Vec<T>::lanes;                                                                                               \
+            using R         = typename Vec<T>::reg_type;                                                                                   \
+            R t[L];                                                                                                                        \
+            for (int i = 0; i < L; ++i)                                                                                                    \
+                t[i] = rows[i].reg;                                                                                                        \
+            for (int round = 1; round < L; round *= 2) {                                                                                   \
+                R u[L];                                                                                                                    \
+                for (int i = 0; i < L / 2; ++i) {                                                                                          \
+                    u[2 * i]     = svzip1_##sfx(t[i], t[i + L / 2]);                                                                       \
+                    u[2 * i + 1] = svzip2_##sfx(t[i], t[i + L / 2]);                                                                       \
+                }                                                                                                                          \
+                for (int i = 0; i < L; ++i)                                                                                                \
+                    t[i] = u[i];                                                                                                           \
+            }                                                                                                                              \
+            for (int i = 0; i < L; ++i)                                                                                                    \
+                rows[i].reg = t[i];                                                                                                        \
+        }
+STRIPES_SVE_TRANSPOSE(double, f64)
+STRIPES_SVE_TRANSPOSE(float, f32)
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+STRIPES_SVE_TRANSPOSE(half_t, f16)
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+STRIPES_SVE_TRANSPOSE(bfloat16_t, bf16)
+#    endif
+#    undef STRIPES_SVE_TRANSPOSE
+
 #elif defined(__aarch64__) || defined(_M_ARM64)
 
 // 2×2 double transpose (NEON)

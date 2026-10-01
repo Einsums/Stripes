@@ -196,7 +196,8 @@ jobs:
           STRIPES_TEST_SWEEP_DIVISOR: "16"
         run: ctest --test-dir build -j4 --timeout 1800
 
-  # NEON on real aarch64 hardware (Neoverse, with SVE2 and no SME: the sme copies are Skipped).
+  # NEON on real aarch64 hardware, and the sve<N> copy matching the runner's SVE vector length, if it
+  # has SVE (Neoverse N2 runners have SVE2 at 128 bits; the sme copies are Skipped).
   linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -211,6 +212,11 @@ jobs:
         run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=g++-14
       - name: Build
         run: cmake --build build
+      # Whether the runner has SVE, and at what length, decides which sve<N> copies run on silicon.
+      - name: CPU features
+        run: |
+          grep -m1 -i features /proc/cpuinfo
+          ./build/examples/example_PlatformInfo
       - name: Test
         run: ctest --test-dir build -j4
 
@@ -263,6 +269,57 @@ jobs:
           # guard turned the emulated SME away.
           if grep -E "\.sme .*Skipped" qemu-ctest.log; then
             echo "::error::sme rung tests were skipped under QEMU"
+            exit 1
+          fi
+
+  # The fixed-length SVE rungs on an emulated core at each vector length: QEMU's -cpu max with
+  # sve-default-vector-length set in bytes. The length's own copies must run (the others are Skipped,
+  # since an sve<N> rung runs only where the vector length is exactly N).
+  qemu-sve:
+    name: qemu-sve (${{ matrix.bits }}-bit)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bits: 128
+            bytes: 16
+          - bits: 256
+            bytes: 32
+          - bits: 512
+            bytes: 64
+    env:
+      QEMU_CPU: max,sve-default-vector-length=${{ matrix.bytes }}
+      QEMU_LD_PREFIX: /usr/aarch64-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: ${{ github.job }}-${{ strategy.job-index }}
+          max-size: 500M
+      - name: Install the cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14-aarch64-linux-gnu
+      - uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3
+          platforms: arm64
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake -DSTRIPES_CROSS_GCC_VERSION=-14
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        env:
+          STRIPES_TEST_SWEEP_DIVISOR: "16"
+        run: |
+          set -o pipefail
+          ctest --test-dir build -j4 --timeout 3600 -R '[.]sve(128|256|512)$|RuntimeFeatures|ArchOverride|^example[.]' \
+            --no-tests=error | tee qemu-ctest.log
+          if grep -E "[.]sve${{ matrix.bits }} .*Skipped" qemu-ctest.log; then
+            echo "::error::the sve${{ matrix.bits }} copies were skipped at a ${{ matrix.bits }}-bit vector length"
             exit 1
           fi
 

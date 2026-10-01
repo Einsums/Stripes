@@ -165,6 +165,41 @@ STRIPES_FORCEINLINE Vec<double> gather(double const *base, std::ptrdiff_t stride
 }
 
 // ---------------------------------------------------------------------------
+// ARM SVE: hardware gather with a vector of element indices
+// ---------------------------------------------------------------------------
+#elif defined(STRIPES_SVE_BITS)
+
+template <>
+STRIPES_FORCEINLINE Vec<float> gather(float const *base, std::ptrdiff_t stride) {
+    if (stride == 1)
+        return loadu(base);
+    if (!detail::offsets_fit_int32<float>(stride))
+        return detail::gather_scalar(base, stride);
+    return svld1_gather_s32index_f32(svptrue_b32(), base, svindex_s32(0, static_cast<int32_t>(stride)));
+}
+
+template <>
+STRIPES_FORCEINLINE Vec<double> gather(double const *base, std::ptrdiff_t stride) {
+    if (stride == 1)
+        return loadu(base);
+    return svld1_gather_s64index_f64(svptrue_b64(), base, svindex_s64(0, stride));
+}
+
+// SVE has no gather of 16-bit elements.
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE Vec<half_t> gather(half_t const *base, std::ptrdiff_t stride) {
+    return stride == 1 ? loadu(base) : detail::gather_scalar(base, stride);
+}
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE Vec<bfloat16_t> gather(bfloat16_t const *base, std::ptrdiff_t stride) {
+    return stride == 1 ? loadu(base) : detail::gather_scalar(base, stride);
+}
+#    endif
+
+// ---------------------------------------------------------------------------
 // ARM NEON: structured loads for small strides, lane loads for general
 // ---------------------------------------------------------------------------
 #elif defined(__aarch64__) || defined(_M_ARM64)
@@ -321,6 +356,15 @@ STRIPES_FORCEINLINE Vec<double> gather(double const *base, Vec<int64_t> idx) {
     long long const i1 = _mm_cvtsi128_si64(_mm_unpackhi_epi64(idx.reg, idx.reg));
     return _mm_setr_pd(base[i0], base[i1]);
 }
+#elif defined(STRIPES_SVE_BITS)
+template <>
+STRIPES_FORCEINLINE Vec<float> gather(float const *base, Vec<int32_t> idx) {
+    return svld1_gather_s32index_f32(svptrue_b32(), base, idx.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> gather(double const *base, Vec<int64_t> idx) {
+    return svld1_gather_s64index_f64(svptrue_b64(), base, idx.reg);
+}
 #else
 template <>
 STRIPES_FORCEINLINE Vec<float> gather(float const *base, Vec<int32_t> idx) {
@@ -375,6 +419,16 @@ STRIPES_FORCEINLINE Vec<float> gather(float const *base, Vec<int32_t> idx, Mask<
 template <>
 STRIPES_FORCEINLINE Vec<double> gather(double const *base, Vec<int64_t> idx, Mask<double> m) {
     return _mm256_mask_i64gather_pd(_mm256_setzero_pd(), base, idx.reg, m.reg, sizeof(double));
+}
+#elif defined(STRIPES_SVE_BITS)
+// The mask is the gather's governing predicate: an inactive lane is zero and its address is not read.
+template <>
+STRIPES_FORCEINLINE Vec<float> gather(float const *base, Vec<int32_t> idx, Mask<float> m) {
+    return svld1_gather_s32index_f32(m.reg, base, idx.reg);
+}
+template <>
+STRIPES_FORCEINLINE Vec<double> gather(double const *base, Vec<int64_t> idx, Mask<double> m) {
+    return svld1_gather_s64index_f64(m.reg, base, idx.reg);
 }
 #else
 template <>
@@ -449,6 +503,51 @@ STRIPES_FORCEINLINE void scatter(bfloat16_t *base, std::ptrdiff_t stride, Vec<bf
 // ---------------------------------------------------------------------------
 // All other platforms: scalar scatter fallback
 // ---------------------------------------------------------------------------
+#elif defined(STRIPES_SVE_BITS)
+
+template <>
+STRIPES_FORCEINLINE void scatter(float *base, std::ptrdiff_t stride, Vec<float> v) {
+    if (stride == 1) {
+        storeu(base, v);
+        return;
+    }
+    if (!detail::offsets_fit_int32<float>(stride)) {
+        detail::scatter_scalar(base, stride, v);
+        return;
+    }
+    svst1_scatter_s32index_f32(svptrue_b32(), base, svindex_s32(0, static_cast<int32_t>(stride)), v.reg);
+}
+
+template <>
+STRIPES_FORCEINLINE void scatter(double *base, std::ptrdiff_t stride, Vec<double> v) {
+    if (stride == 1) {
+        storeu(base, v);
+        return;
+    }
+    svst1_scatter_s64index_f64(svptrue_b64(), base, svindex_s64(0, stride), v.reg);
+}
+
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE void scatter(half_t *base, std::ptrdiff_t stride, Vec<half_t> v) {
+    if (stride == 1) {
+        storeu(base, v);
+        return;
+    }
+    detail::scatter_scalar(base, stride, v);
+}
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+template <>
+STRIPES_FORCEINLINE void scatter(bfloat16_t *base, std::ptrdiff_t stride, Vec<bfloat16_t> v) {
+    if (stride == 1) {
+        storeu(base, v);
+        return;
+    }
+    detail::scatter_scalar(base, stride, v);
+}
+#    endif
+
 #else
 
 template <>
@@ -509,7 +608,26 @@ STRIPES_FORCEINLINE Vec<T> gather_fixed(T const *base) {
     if constexpr (Stride == 1) {
         return loadu(base);
     } else {
-#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(STRIPES_SVE_BITS)
+        // SVE structured loads for strides 2 to 4, and the hardware gather beyond.
+        if constexpr (std::is_same_v<T, float> && Stride >= 2 && Stride <= 4) {
+            if constexpr (Stride == 2)
+                return svget2_f32(svld2_f32(svptrue_b32(), base), 0);
+            else if constexpr (Stride == 3)
+                return svget3_f32(svld3_f32(svptrue_b32(), base), 0);
+            else
+                return svget4_f32(svld4_f32(svptrue_b32(), base), 0);
+        } else if constexpr (std::is_same_v<T, double> && Stride >= 2 && Stride <= 4) {
+            if constexpr (Stride == 2)
+                return svget2_f64(svld2_f64(svptrue_b64(), base), 0);
+            else if constexpr (Stride == 3)
+                return svget3_f64(svld3_f64(svptrue_b64(), base), 0);
+            else
+                return svget4_f64(svld4_f64(svptrue_b64(), base), 0);
+        } else {
+            return gather(base, Stride);
+        }
+#elif defined(__aarch64__) || defined(_M_ARM64)
         // NEON structured loads for known small strides
         if constexpr (std::is_same_v<T, float>) {
             if constexpr (Stride == 2)
@@ -536,8 +654,8 @@ STRIPES_FORCEINLINE void scatter_fixed(T *base, Vec<T> v) {
     if constexpr (Stride == 1) {
         storeu(base, v);
     } else {
-#if defined(__AVX512F__) && defined(__AVX512VL__)
-        scatter(base, Stride, v); // AVX-512 hardware scatter
+#if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(STRIPES_SVE_BITS)
+        scatter(base, Stride, v); // AVX-512 or SVE hardware scatter
 #else
         detail::scatter_scalar(base, Stride, v);
 #endif

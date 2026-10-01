@@ -305,7 +305,7 @@ TEST_CASE("the generic layer's overloads resolve as designed", "[simd][generic]"
 
     // The runtime ladder's select still resolves beside the scalar select.
     using Fn           = int (*)();
-    static Fn const fn = simd::select<Fn>(+[] { return 7; }, nullptr, nullptr, nullptr, nullptr);
+    static Fn const fn = simd::select<Fn>({.baseline = +[] { return 7; }});
     CHECK(fn() == 7);
     CHECK(simd::select(true, 1.0, 2.0) == 1.0);
 }

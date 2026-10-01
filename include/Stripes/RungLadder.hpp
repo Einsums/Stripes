@@ -7,7 +7,7 @@
 
 /**
  * @file RungLadder.hpp
- * @brief The per-rung entry points of a kernel compiled once per rung, as @ref stripes::select takes them.
+ * @brief The per-rung entry points of a kernel compiled once per rung, as a @ref stripes::Ladder for @ref stripes::select.
  *
  * A module whose kernel translation units go through ``stripes_add_dispatch_sources``
  * compiles one copy per rung, each in its own ``arch_<rung>`` namespace, and the target is told
@@ -81,14 +81,44 @@
 #    define STRIPES_EACH_SME(X)
 #endif
 
-/// Invoke @p X with the name of every ``arch_<rung>`` namespace this target built.
-#define STRIPES_FOR_EACH_BUILT_RUNG(X)                                                                                                     \
-    STRIPES_EACH_NATIVE(X)                                                                                                                 \
-    STRIPES_EACH_BASELINE(X) STRIPES_EACH_V2(X) STRIPES_EACH_V3(X) STRIPES_EACH_V4(X) STRIPES_EACH_SME(X)
+#if defined(STRIPES_HAS_RUNG_SVE128)
+#    define STRIPES_SVE128_SLOT(fn) &arch_sve128::fn
+#    define STRIPES_EACH_SVE128(X)  X(arch_sve128)
+#else
+#    define STRIPES_SVE128_SLOT(fn) nullptr
+#    define STRIPES_EACH_SVE128(X)
+#endif
 
-/// The five ladder slots of @p fn alone, baseline to sme, for code that walks them itself.
-#define STRIPES_LADDER_SLOTS(fn)                                                                                                           \
-    STRIPES_BASELINE_SLOT(fn), STRIPES_V2_SLOT(fn), STRIPES_V3_SLOT(fn), STRIPES_V4_SLOT(fn), STRIPES_SME_SLOT(fn)
+#if defined(STRIPES_HAS_RUNG_SVE256)
+#    define STRIPES_SVE256_SLOT(fn) &arch_sve256::fn
+#    define STRIPES_EACH_SVE256(X)  X(arch_sve256)
+#else
+#    define STRIPES_SVE256_SLOT(fn) nullptr
+#    define STRIPES_EACH_SVE256(X)
+#endif
+
+#if defined(STRIPES_HAS_RUNG_SVE512)
+#    define STRIPES_SVE512_SLOT(fn) &arch_sve512::fn
+#    define STRIPES_EACH_SVE512(X)  X(arch_sve512)
+#else
+#    define STRIPES_SVE512_SLOT(fn) nullptr
+#    define STRIPES_EACH_SVE512(X)
+#endif
+
+/// Invoke @p X with the name of every ``arch_<rung>`` namespace this target built.
+// One rung per line; clang-format otherwise reflows this differently on every run.
+// clang-format off
+#define STRIPES_FOR_EACH_BUILT_RUNG(X) \
+    STRIPES_EACH_NATIVE(X)             \
+    STRIPES_EACH_BASELINE(X)           \
+    STRIPES_EACH_V2(X)                 \
+    STRIPES_EACH_V3(X)                 \
+    STRIPES_EACH_V4(X)                 \
+    STRIPES_EACH_SME(X)                \
+    STRIPES_EACH_SVE128(X)             \
+    STRIPES_EACH_SVE256(X)             \
+    STRIPES_EACH_SVE512(X)
+// clang-format on
 
 /// What this target's sme copies need besides SME, as stripes_add_dispatch_sources() probed it with
 /// this target's compiler; without the probe, the worst case (see stripes::SmeRungRequires).
@@ -98,5 +128,15 @@
 #    define STRIPES_SME_REQUIRES (::stripes::SmeRungRequires{})
 #endif
 
-/// Everything @ref stripes::select takes for @p fn: the five slots and the sme copies' requirements.
-#define STRIPES_LADDER(fn) STRIPES_LADDER_SLOTS(fn), STRIPES_SME_REQUIRES
+/// A stripes::Ladder of @p fn's built copies and the sme copy's requirements, for stripes::select:
+/// ``stripes::select<Fn>(STRIPES_LADDER(fn))``. A rung that was not built is nullptr.
+#define STRIPES_LADDER(fn)                                                                                                                 \
+    {.baseline     = STRIPES_BASELINE_SLOT(fn),                                                                                            \
+     .v2           = STRIPES_V2_SLOT(fn),                                                                                                  \
+     .v3           = STRIPES_V3_SLOT(fn),                                                                                                  \
+     .v4           = STRIPES_V4_SLOT(fn),                                                                                                  \
+     .sme          = STRIPES_SME_SLOT(fn),                                                                                                 \
+     .sve128       = STRIPES_SVE128_SLOT(fn),                                                                                              \
+     .sve256       = STRIPES_SVE256_SLOT(fn),                                                                                              \
+     .sve512       = STRIPES_SVE512_SLOT(fn),                                                                                              \
+     .sme_requires = STRIPES_SME_REQUIRES}

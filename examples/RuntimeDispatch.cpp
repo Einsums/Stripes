@@ -15,8 +15,8 @@
 ///
 ///   - STRIPES_FOR_EACH_BUILT_RUNG(X) calls X(arch_<rung>) for every rung this build compiled,
 ///     which is how the declarations below name every copy without knowing which exist.
-///   - STRIPES_LADDER(fn) expands to the five slots select() takes, one per rung, with nullptr
-///     for a rung that was not built, followed by what the sme copy needs besides SME (see
+///   - STRIPES_LADDER(fn) builds the stripes::Ladder select() takes: one entry per rung, nullptr
+///     for a rung that was not built, and what the sme copy needs besides SME (see
 ///     stripes::SmeRungRequires).
 ///   - select<Fn>(...) returns the slot of the rung selected_arch() chose: the best the CPU and the
 ///     operating system support, lowered by STRIPES_ARCH if given.

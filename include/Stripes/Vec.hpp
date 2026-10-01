@@ -20,6 +20,9 @@
 #    endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #    include <arm_neon.h>
+#    if defined(STRIPES_SVE_BITS)
+#        include <arm_sve.h>
+#    endif
 #endif
 
 STRIPES_NAMESPACE_BEGIN()
@@ -284,6 +287,80 @@ struct VecTraits<uint8_t> {
     static constexpr int lanes = 16;
     static constexpr int bits  = 128;
 };
+
+// ===========================================================================
+// ARM SVE, fixed length (an sve<N> rung, -msve-vector-bits=N): N-bit registers
+//
+// The ACLE's SVE types have no size, so they cannot be members or array
+// elements. With -msve-vector-bits=N the arm_sve_vector_bits attribute gives
+// sized versions of them, which can, and Vec<T> is one of those. Code built for
+// one N is correct only where the vector length is exactly N, which the
+// sve<N> rungs' runtime gate checks (stripes::supports).
+// ===========================================================================
+#elif defined(STRIPES_SVE_BITS)
+
+static_assert(STRIPES_SVE_BITS >= 128 && STRIPES_SVE_BITS <= 512,
+              "the SVE tier supports vector lengths of 128 to 512 bits (a 64-bit to_bits holds a 512-bit float mask)");
+
+namespace detail {
+#    define STRIPES_SVE_FIXED(name, sizeless) typedef sizeless name __attribute__((arm_sve_vector_bits(STRIPES_SVE_BITS)));
+STRIPES_SVE_FIXED(sve_f32, svfloat32_t)
+STRIPES_SVE_FIXED(sve_f64, svfloat64_t)
+STRIPES_SVE_FIXED(sve_s8, svint8_t)
+STRIPES_SVE_FIXED(sve_u8, svuint8_t)
+STRIPES_SVE_FIXED(sve_s16, svint16_t)
+STRIPES_SVE_FIXED(sve_s32, svint32_t)
+STRIPES_SVE_FIXED(sve_u32, svuint32_t)
+STRIPES_SVE_FIXED(sve_s64, svint64_t)
+STRIPES_SVE_FIXED(sve_u64, svuint64_t)
+/// A predicate: Mask<T>'s register, one bit per byte of the vector.
+STRIPES_SVE_FIXED(sve_pred, svbool_t)
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+STRIPES_SVE_FIXED(sve_f16, svfloat16_t)
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+STRIPES_SVE_FIXED(sve_bf16, svbfloat16_t)
+#    endif
+#    undef STRIPES_SVE_FIXED
+
+/// The all-true predicate for elements of T's size.
+template <typename T>
+STRIPES_FORCEINLINE svbool_t sve_all() {
+    if constexpr (sizeof(T) == 1) {
+        return svptrue_b8();
+    } else if constexpr (sizeof(T) == 2) {
+        return svptrue_b16();
+    } else if constexpr (sizeof(T) == 4) {
+        return svptrue_b32();
+    } else {
+        return svptrue_b64();
+    }
+}
+} // namespace detail
+
+#    define STRIPES_SVE_TRAITS(T, reg, ints)                                                                                               \
+        template <>                                                                                                                        \
+        struct VecTraits<T> {                                                                                                              \
+            using reg_type             = detail::reg;                                                                                      \
+            using int_type             = detail::ints;                                                                                     \
+            static constexpr int lanes = STRIPES_SVE_BITS / (8 * static_cast<int>(sizeof(T)));                                             \
+            static constexpr int bits  = STRIPES_SVE_BITS;                                                                                 \
+        };
+STRIPES_SVE_TRAITS(float, sve_f32, sve_s32)
+STRIPES_SVE_TRAITS(double, sve_f64, sve_s64)
+STRIPES_SVE_TRAITS(int32_t, sve_s32, sve_s32)
+STRIPES_SVE_TRAITS(uint32_t, sve_u32, sve_u32)
+STRIPES_SVE_TRAITS(int64_t, sve_s64, sve_s64)
+STRIPES_SVE_TRAITS(uint64_t, sve_u64, sve_u64)
+STRIPES_SVE_TRAITS(int8_t, sve_s8, sve_s8)
+STRIPES_SVE_TRAITS(uint8_t, sve_u8, sve_u8)
+#    if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+STRIPES_SVE_TRAITS(half_t, sve_f16, sve_s16)
+#    endif
+#    if defined(__ARM_FEATURE_SVE_BF16) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+STRIPES_SVE_TRAITS(bfloat16_t, sve_bf16, sve_s16)
+#    endif
+#    undef STRIPES_SVE_TRAITS
 
 // ===========================================================================
 // ARM NEON (aarch64, including Apple Silicon): 128-bit registers
