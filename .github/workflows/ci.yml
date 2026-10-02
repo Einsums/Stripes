@@ -92,7 +92,9 @@ jobs:
           miniforge-version: latest
           activate-environment: stripes-cuda
           conda-remove-defaults: "true"
-      # cuda-nvcc brings the host compiler it supports (gxx_linux-64).
+      # cuda-nvcc brings the host compiler it supports (gxx_linux-64), and its activation hands that
+      # compiler to nvcc through NVCC_PREPEND_FLAGS (-ccbin=$CXX). So CMAKE_CUDA_HOST_COMPILER is
+      # left unset: a second -ccbin from CMake makes nvcc warn on every compile.
       - name: Install the CUDA toolkit
         run: conda install -y "cuda-version=${{ matrix.cuda }}" cuda-nvcc cuda-cudart-dev "cmake>=3.24" ninja
       - name: Select the conda compiler
@@ -108,7 +110,7 @@ jobs:
       - name: Configure
         run: >
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER="$STRIPES_CONDA_CXX"
-          -DCMAKE_CUDA_HOST_COMPILER="$STRIPES_CONDA_CXX" -DCMAKE_CUDA_ARCHITECTURES=80
+          -DCMAKE_CUDA_ARCHITECTURES=80
           -DSTRIPES_WITH_CUDA_TESTS=ON -DSTRIPES_WITH_TESTS=OFF -DSTRIPES_WITH_EXAMPLES=OFF -DSTRIPES_WITH_BENCHMARKS=OFF
       - name: Build
         run: cmake --build build
