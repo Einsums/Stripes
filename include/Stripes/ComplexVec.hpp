@@ -131,11 +131,15 @@ STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
 #    elif defined(STRIPES_SVE_BITS)
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_broadcast(std::complex<float> val) {
-    return svdupq_n_f32(val.real(), val.imag(), val.real(), val.imag());
+    // LD1RQ replicates a 128-bit pattern. svdupq_n would say the same, but GCC 14.2 crashes folding it
+    // (internal compiler error in fold_vec_perm).
+    float const pair[4] = {val.real(), val.imag(), val.real(), val.imag()};
+    return svld1rq_f32(svptrue_b32(), pair);
 }
 template <>
 STRIPES_FORCEINLINE CVec<double> complex_broadcast(std::complex<double> val) {
-    return svdupq_n_f64(val.real(), val.imag());
+    double const pair[2] = {val.real(), val.imag()};
+    return svld1rq_f64(svptrue_b64(), pair);
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
@@ -217,12 +221,14 @@ STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
 template <>
 STRIPES_FORCEINLINE CVec<float> conjugate(CVec<float> v) {
     // Flip the sign of the imaginary (odd) lanes.
-    svuint32_t const sign = svreinterpret_u32_f32(svdupq_n_f32(0.f, -0.f, 0.f, -0.f));
+    static float const odd[4] = {0.f, -0.f, 0.f, -0.f};
+    svuint32_t const   sign   = svreinterpret_u32_f32(svld1rq_f32(svptrue_b32(), odd));
     return svreinterpret_f32_u32(sveor_u32_x(svptrue_b32(), svreinterpret_u32_f32(v.reg), sign));
 }
 template <>
 STRIPES_FORCEINLINE CVec<double> conjugate(CVec<double> v) {
-    svuint64_t const sign = svreinterpret_u64_f64(svdupq_n_f64(0.0, -0.0));
+    static double const odd[2] = {0.0, -0.0};
+    svuint64_t const    sign   = svreinterpret_u64_f64(svld1rq_f64(svptrue_b64(), odd));
     return svreinterpret_f64_u64(sveor_u64_x(svptrue_b64(), svreinterpret_u64_f64(v.reg), sign));
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
@@ -363,23 +369,25 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
 // fuse them.
 template <>
 STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
-    svbool_t const    pg     = svptrue_b32();
-    svfloat32_t const a_rr   = svtrn1_f32(a.reg, a.reg); // real parts, each twice
-    svfloat32_t const a_ii   = svtrn2_f32(a.reg, a.reg); // imaginary parts, each twice
-    svfloat32_t const b_swap = svreinterpret_f32_u64(svrevw_u64_x(svptrue_b64(), svreinterpret_u64_f32(b.reg)));
-    svfloat32_t const t1     = svmul_f32_x(pg, a_rr, b.reg);
-    svfloat32_t const t2     = svmul_f32_x(pg, a_ii, b_swap);
-    return svadd_f32_x(pg, t1, svmul_f32_x(pg, t2, svdupq_n_f32(-1.0f, 1.0f, -1.0f, 1.0f)));
+    svbool_t const     pg           = svptrue_b32();
+    svfloat32_t const  a_rr         = svtrn1_f32(a.reg, a.reg); // real parts, each twice
+    svfloat32_t const  a_ii         = svtrn2_f32(a.reg, a.reg); // imaginary parts, each twice
+    svfloat32_t const  b_swap       = svreinterpret_f32_u64(svrevw_u64_x(svptrue_b64(), svreinterpret_u64_f32(b.reg)));
+    svfloat32_t const  t1           = svmul_f32_x(pg, a_rr, b.reg);
+    svfloat32_t const  t2           = svmul_f32_x(pg, a_ii, b_swap);
+    static float const alternate[4] = {-1.0f, 1.0f, -1.0f, 1.0f};
+    return svadd_f32_x(pg, t1, svmul_f32_x(pg, t2, svld1rq_f32(svptrue_b32(), alternate)));
 }
 template <>
 STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
-    svbool_t const    pg     = svptrue_b64();
-    svfloat64_t const a_rr   = svtrn1_f64(a.reg, a.reg);
-    svfloat64_t const a_ii   = svtrn2_f64(a.reg, a.reg);
-    svfloat64_t const b_swap = svtrn1_f64(svtrn2_f64(b.reg, b.reg), svtrn1_f64(b.reg, b.reg)); // im, re of each value
-    svfloat64_t const t1     = svmul_f64_x(pg, a_rr, b.reg);
-    svfloat64_t const t2     = svmul_f64_x(pg, a_ii, b_swap);
-    return svadd_f64_x(pg, t1, svmul_f64_x(pg, t2, svdupq_n_f64(-1.0, 1.0)));
+    svbool_t const      pg           = svptrue_b64();
+    svfloat64_t const   a_rr         = svtrn1_f64(a.reg, a.reg);
+    svfloat64_t const   a_ii         = svtrn2_f64(a.reg, a.reg);
+    svfloat64_t const   b_swap       = svtrn1_f64(svtrn2_f64(b.reg, b.reg), svtrn1_f64(b.reg, b.reg)); // im, re of each value
+    svfloat64_t const   t1           = svmul_f64_x(pg, a_rr, b.reg);
+    svfloat64_t const   t2           = svmul_f64_x(pg, a_ii, b_swap);
+    static double const alternate[2] = {-1.0, 1.0};
+    return svadd_f64_x(pg, t1, svmul_f64_x(pg, t2, svld1rq_f64(svptrue_b64(), alternate)));
 }
 #    elif defined(__aarch64__) || defined(_M_ARM64)
 template <>
