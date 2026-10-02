@@ -31,7 +31,7 @@ set(_checked 0)
 set(_offenders "")
 foreach(_object IN LISTS _objects)
   # The dispatch helper names each copy <stem>_<rung>.cpp in a simd_dispatch directory.
-  if(NOT _object MATCHES "simd_dispatch/[^/]*_(baseline|v2|v3|v4|sme|native)\\.cpp\\.(o|obj)$")
+  if(NOT _object MATCHES "simd_dispatch/[^/]*_(baseline|v2|v3|v4|sme|sve128|sve256|sve512|native)\\.cpp\\.(o|obj)$")
     continue()
   endif()
   set(_rung "${CMAKE_MATCH_1}")
@@ -56,6 +56,11 @@ foreach(_object IN LISTS _objects)
     set(_name "${CMAKE_MATCH_2}")
     # Itanium mangling spells a namespace as its length and name, as in 7arch_v4 or 33isa_avx_...
     if(_name MATCHES "[0-9]arch_${_rung}" OR _name MATCHES "[0-9]isa_" OR _name MATCHES "^DW\\.ref\\.")
+      continue()
+    endif()
+    # Clang's handler for an exception leaving a noexcept function: a call to __cxa_begin_catch
+    # and std::terminate, the same instructions at every rung's flags, so any copy serves.
+    if(_name STREQUAL "__clang_call_terminate")
       continue()
     endif()
     list(APPEND _offenders "${_object}: ${_name}")

@@ -284,7 +284,7 @@ CpuFeatures const &cpu_features() {
     return features;
 }
 
-int vector_bits(InstructionSet set) {
+int vector_bits(InstructionSet set) noexcept {
     switch (set) {
     case InstructionSet::V3:
         return 256;
@@ -303,7 +303,7 @@ int vector_bits(InstructionSet set) {
     return 128;
 }
 
-char const *to_string(InstructionSet set) {
+char const *to_string(InstructionSet set) noexcept {
     switch (set) {
     case InstructionSet::Baseline:
         return "baseline";
@@ -360,7 +360,7 @@ std::optional<InstructionSet> parse_instruction_set(std::string_view name) {
     return std::nullopt;
 }
 
-std::span<InstructionSet const> preference_order(Architecture arch) {
+std::span<InstructionSet const> preference_order(Architecture arch) noexcept {
     static constexpr InstructionSet x86[] = {InstructionSet::V4, InstructionSet::V3, InstructionSet::V2, InstructionSet::Baseline};
     // At most one sve<N> rung runs on a machine (the one matching its vector length), so their
     // order among themselves only says which is tried first.
@@ -378,7 +378,7 @@ std::span<InstructionSet const> preference_order(Architecture arch) {
     return other;
 }
 
-bool supports(CpuFeatures const &f, InstructionSet set) {
+bool supports(CpuFeatures const &f, InstructionSet set) noexcept {
     // Full psABI gates: every extension of a level must be present for the
     // level to qualify, because a compiler told -march=x86-64-v3 may emit
     // any of them anywhere in the TU.
@@ -409,7 +409,7 @@ bool supports(CpuFeatures const &f, InstructionSet set) {
     return false;
 }
 
-InstructionSet highest_supported(CpuFeatures const &f) {
+InstructionSet highest_supported(CpuFeatures const &f) noexcept {
     for (InstructionSet const set : preference_order(f.arch)) {
         if (supports(f, set)) {
             return set;

@@ -157,7 +157,7 @@ enum class InstructionSet : std::uint8_t {
  *
  * @return A static string; never nullptr.
  */
-STRIPES_EXPORT char const *to_string(InstructionSet set);
+STRIPES_EXPORT char const *to_string(InstructionSet set) noexcept;
 
 /**
  * @brief Width in bits of the vector register a rung's kernels are written for.
@@ -175,7 +175,7 @@ STRIPES_EXPORT char const *to_string(InstructionSet set);
  *
  * @return 128, 256 or 512.
  */
-STRIPES_EXPORT int vector_bits(InstructionSet set);
+STRIPES_EXPORT int vector_bits(InstructionSet set) noexcept;
 
 /**
  * @brief Parse a rung name, as accepted by the `STRIPES_ARCH`
@@ -202,7 +202,7 @@ STRIPES_EXPORT std::optional<InstructionSet> parse_instruction_set(std::string_v
  *
  * @return A view of a static array; valid for the lifetime of the process.
  */
-STRIPES_EXPORT std::span<InstructionSet const> preference_order(Architecture arch);
+STRIPES_EXPORT std::span<InstructionSet const> preference_order(Architecture arch) noexcept;
 
 /**
  * @brief Whether a machine with @p features can execute code compiled for @p set.
@@ -220,7 +220,7 @@ STRIPES_EXPORT std::span<InstructionSet const> preference_order(Architecture arc
  *
  * @return True when every feature the rung's code may use is present.
  */
-STRIPES_EXPORT bool supports(CpuFeatures const &features, InstructionSet set);
+STRIPES_EXPORT bool supports(CpuFeatures const &features, InstructionSet set) noexcept;
 
 /**
  * @brief The most preferred rung this CPU can execute.
@@ -233,7 +233,7 @@ STRIPES_EXPORT bool supports(CpuFeatures const &features, InstructionSet set);
  *
  * @return The best supported rung; Baseline when nothing else qualifies.
  */
-STRIPES_EXPORT InstructionSet highest_supported(CpuFeatures const &features);
+STRIPES_EXPORT InstructionSet highest_supported(CpuFeatures const &features) noexcept;
 
 /**
  * @brief Resolve the rung to dispatch to, given a feature set and an
