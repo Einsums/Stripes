@@ -41,6 +41,16 @@
 #    endif
 #endif
 
+/// Marks a function that a CUDA or HIP kernel may call as well as host code: the scalar forms of
+/// Generic.hpp and Math.hpp. Empty outside a CUDA or HIP translation unit.
+#if !defined(STRIPES_HOST_DEVICE)
+#    if defined(__CUDACC__) || defined(__HIPCC__)
+#        define STRIPES_HOST_DEVICE __host__ __device__
+#    else
+#        define STRIPES_HOST_DEVICE
+#    endif
+#endif
+
 /// Marks a function of the runtime library (RuntimeFeatures.cpp) exported from it, or imported by its
 /// users. The build defines STRIPES_EXPORTS while compiling the library and STRIPES_STATIC when the
 /// library is static, in which case there is nothing to export or import.

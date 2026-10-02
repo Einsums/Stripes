@@ -6,18 +6,19 @@
 #pragma once
 
 #include <Stripes/Config.hpp>
-#include <Stripes/Convert.hpp>
-#include <Stripes/Gather.hpp>
-#include <Stripes/Operations.hpp>
-#include <Stripes/Partial.hpp>
 #include <Stripes/Platform.hpp>
-#include <Stripes/Vec.hpp>
-#include <Stripes/Wide.hpp>
-#include <bit>
+#if !defined(STRIPES_SCALAR_ONLY)
+#    include <Stripes/Convert.hpp>
+#    include <Stripes/Gather.hpp>
+#    include <Stripes/Operations.hpp>
+#    include <Stripes/Partial.hpp>
+#    include <Stripes/Vec.hpp>
+#    include <Stripes/Wide.hpp>
+#endif
 #include <cmath>
 #include <concepts>
 #include <cstddef>
-#include <limits>
+#include <cstdint>
 #include <type_traits>
 
 // ===========================================================================
@@ -53,6 +54,16 @@
 // library's sqrt. std::min and std::max are templates too, so code that has
 // both using namespace std and using namespace stripes must qualify an
 // unqualified min or max on scalars, which would otherwise be ambiguous.
+//
+// In a CUDA or HIP translation unit this header is the scalar half alone
+// (STRIPES_SCALAR_ONLY, Platform.hpp), and every function in it is
+// __host__ __device__, so a kernel instantiates the same body with float or
+// double, one problem per thread. The device then gives the bits the CPU's
+// scalar and vector instantiations give, under the same condition and one
+// more: the CPU build has FMA (the fused forms are always fused on a GPU), and
+// the device compiler does not contract a kernel's own multiply and add either
+// (nvcc --fmad=false; clang and hipcc -ffp-contract=off) or approximate
+// division and square roots (no --use_fast_math or -ffast-math).
 // ===========================================================================
 
 STRIPES_NAMESPACE_BEGIN()
@@ -65,22 +76,23 @@ STRIPES_ISA_NAMESPACE_BEGIN()
 namespace detail {
 template <typename V>
 struct is_vec : std::false_type {};
-template <typename T, int N>
-struct is_vec<Vec<T, N>> : std::true_type {};
-
 template <typename V>
 struct lanes_of : std::integral_constant<int, 1> {};
-template <typename T, int N>
-struct lanes_of<Vec<T, N>> : std::integral_constant<int, N> {};
-
 template <typename V>
 struct value_of {
     using type = V;
 };
+
+#if !defined(STRIPES_SCALAR_ONLY)
+template <typename T, int N>
+struct is_vec<Vec<T, N>> : std::true_type {};
+template <typename T, int N>
+struct lanes_of<Vec<T, N>> : std::integral_constant<int, N> {};
 template <typename T, int N>
 struct value_of<Vec<T, N>> {
     using type = T;
 };
+#endif
 
 /// An element type a scalar overload takes: a floating-point type or an integer, but not bool.
 template <typename T>
@@ -105,7 +117,7 @@ inline constexpr int lanes_v = detail::lanes_of<V>::value;
 
 /// A V holding x in every lane.
 template <typename V>
-STRIPES_FORCEINLINE V splat(scalar_t<V> x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V splat(scalar_t<V> x) {
     if constexpr (!is_vec_v<V>) {
         return x;
     } else if constexpr (V::native) {
@@ -119,7 +131,7 @@ STRIPES_FORCEINLINE V splat(scalar_t<V> x) {
 
 /// lanes_v<V> consecutive elements from p, which need no alignment.
 template <typename V>
-STRIPES_FORCEINLINE V load(scalar_t<V> const *p) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V load(scalar_t<V> const *p) {
     if constexpr (!is_vec_v<V>) {
         return *p;
     } else if constexpr (V::native) {
@@ -135,34 +147,38 @@ STRIPES_FORCEINLINE V load(scalar_t<V> const *p) {
 }
 
 /// Write v's lanes to consecutive elements from p, which needs no alignment.
+#if !defined(STRIPES_SCALAR_ONLY)
 template <typename T, int N>
 STRIPES_FORCEINLINE void store(T *p, Vec<T, N> v) {
     storeu(p, v);
 }
+#endif
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE void store(T *p, T v) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE void store(T *p, T v) {
     *p = v;
 }
 
 /// base[idx] for each lane's index: the index gather for a vector, plain indexing for a scalar. A
 /// distinct name from gather, whose (base, integer) form is a strided load and would silently
 /// accept a scalar index.
+template <std::floating_point T, std::integral I>
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T lookup(T const *base, I idx) {
+    return base[idx];
+}
+/// lookup in the lanes m sets, zero elsewhere; an inactive lane's index is never dereferenced.
+template <std::floating_point T, std::integral I>
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T lookup(T const *base, I idx, bool m) {
+    return m ? base[idx] : T(0);
+}
+
+#if !defined(STRIPES_SCALAR_ONLY)
 template <typename T>
 STRIPES_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx) {
     return gather(base, idx);
 }
-template <std::floating_point T, std::integral I>
-STRIPES_FORCEINLINE T lookup(T const *base, I idx) {
-    return base[idx];
-}
-/// lookup in the lanes m sets, zero elsewhere; an inactive lane's index is never dereferenced.
 template <typename T>
 STRIPES_FORCEINLINE Vec<T> lookup(T const *base, Vec<gather_index_t<T>> idx, Mask<T> m) {
     return gather(base, idx, m);
-}
-template <std::floating_point T, std::integral I>
-STRIPES_FORCEINLINE T lookup(T const *base, I idx, bool m) {
-    return m ? base[idx] : T(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,29 +201,29 @@ concept lookup_index = std::same_as<I, int32_t> || std::same_as<I, int64_t>;
 template <typename T, typename I, int N>
 inline constexpr bool native_lookup = N == VecTraits<T>::lanes && std::same_as<I, gather_index_t<T>>;
 
-#if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(__AVX2__)
-#    define STRIPES_HAVE_GATHER_PD_I32 1
+#    if (defined(__AVX512F__) && defined(__AVX512VL__)) || defined(__AVX2__)
+#        define STRIPES_HAVE_GATHER_PD_I32 1
 /// The doubles at half @p h of a 32-bit index register: one double register's worth of lanes.
 STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
-#    if defined(__AVX512F__) && defined(__AVX512VL__)
+#        if defined(__AVX512F__) && defined(__AVX512VL__)
     __m256i const half = h == 0 ? _mm512_castsi512_si256(idx.reg) : _mm512_extracti64x4_epi64(idx.reg, 1);
     return _mm512_i32gather_pd(half, base, sizeof(double));
-#    else
+#        else
     __m128i const half = h == 0 ? _mm256_castsi256_si128(idx.reg) : _mm256_extracti128_si256(idx.reg, 1);
     return _mm256_i32gather_pd(base, half, sizeof(double));
-#    endif
+#        endif
 }
 STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h, Mask<double> m) {
-#    if defined(__AVX512F__) && defined(__AVX512VL__)
+#        if defined(__AVX512F__) && defined(__AVX512VL__)
     __m256i const half = h == 0 ? _mm512_castsi512_si256(idx.reg) : _mm512_extracti64x4_epi64(idx.reg, 1);
     return _mm512_mask_i32gather_pd(_mm512_setzero_pd(), m.reg, half, base, sizeof(double));
-#    else
+#        else
     __m128i const half = h == 0 ? _mm256_castsi256_si128(idx.reg) : _mm256_extracti128_si256(idx.reg, 1);
     return _mm256_mask_i32gather_pd(_mm256_setzero_pd(), base, half, m.reg, sizeof(double));
-#    endif
+#        endif
 }
-#elif !defined(__AVX__) && (defined(__x86_64__) || defined(_M_X64))
-#    define STRIPES_HAVE_GATHER_PD_I32 1
+#    elif !defined(__AVX__) && (defined(__x86_64__) || defined(_M_X64))
+#        define STRIPES_HAVE_GATHER_PD_I32 1
 // SSE has no gather: the two indices of half h come out of the register and the doubles are loaded
 // into one, with no round trip through memory, which stalls on store forwarding.
 STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> idx, int h) {
@@ -223,7 +239,7 @@ STRIPES_FORCEINLINE Vec<double> gather_pd_i32(double const *base, Vec<int32_t> i
     double const  d1   = (set & 2) ? base[_mm_cvtsi128_si32(_mm_shuffle_epi32(pair, _MM_SHUFFLE(1, 1, 1, 1)))] : 0.0;
     return _mm_setr_pd(d0, d1);
 }
-#endif
+#    endif
 
 /// The fallback: every lane's index read through memory, and only the lanes @p bits sets loaded.
 template <typename T, typename I, int N>
@@ -252,7 +268,7 @@ STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
         }
         return r;
     }
-#if defined(STRIPES_HAVE_GATHER_PD_I32)
+#    if defined(STRIPES_HAVE_GATHER_PD_I32)
     else if constexpr (std::same_as<T, double> && std::same_as<I, int32_t> && LI == 2 * LT) {
         Vec<T, N> r;
         for (int k = 0; k < N / LI; ++k) {
@@ -262,7 +278,7 @@ STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx) {
         }
         return r;
     }
-#endif
+#    endif
     else {
         return detail::lookup_lanes(base, idx, N == 64 ? ~uint64_t{0} : (uint64_t{1} << N) - 1u);
     }
@@ -280,7 +296,7 @@ STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m)
         }
         return r;
     }
-#if defined(STRIPES_HAVE_GATHER_PD_I32)
+#    if defined(STRIPES_HAVE_GATHER_PD_I32)
     else if constexpr (std::same_as<T, double> && std::same_as<I, int32_t> && LI == 2 * LT) {
         Vec<T, N> r;
         for (int k = 0; k < N / LI; ++k) {
@@ -290,19 +306,20 @@ STRIPES_FORCEINLINE Vec<T, N> lookup(T const *base, Vec<I, N> idx, Mask<T, N> m)
         }
         return r;
     }
-#endif
+#    endif
     else {
         return detail::lookup_lanes(base, idx, to_bits(m));
     }
 }
+#endif // !STRIPES_SCALAR_ONLY
 
 /// The scalar forms of the masked load and store: *p where m is true, and zero or nothing otherwise.
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE T loadu(T const *p, bool m) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T loadu(T const *p, bool m) {
     return m ? *p : T(0);
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE void storeu(T *p, T v, bool m) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE void storeu(T *p, T v, bool m) {
     if (m) {
         *p = v;
     }
@@ -313,15 +330,16 @@ STRIPES_FORCEINLINE void storeu(T *p, T v, bool m) {
 // ---------------------------------------------------------------------------
 
 /// Whether the fused forms round once on this build, as the vector fmadd does.
+/// A GPU has a fused multiply-add only, so a CUDA or HIP translation unit fuses in both passes.
 inline constexpr bool scalar_fma_fused =
-#if defined(STRIPES_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64)
+#if defined(STRIPES_HAVE_FMA) || defined(__aarch64__) || defined(_M_ARM64) || defined(STRIPES_SCALAR_ONLY)
     true;
 #else
     false;
 #endif
 
 template <std::floating_point T>
-STRIPES_FORCEINLINE T fmadd(T a, T b, T c) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T fmadd(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(a, b, c);
     } else {
@@ -329,7 +347,7 @@ STRIPES_FORCEINLINE T fmadd(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T fmsub(T a, T b, T c) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T fmsub(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(a, b, -c);
     } else {
@@ -337,7 +355,7 @@ STRIPES_FORCEINLINE T fmsub(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T fnmadd(T a, T b, T c) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T fnmadd(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(-a, b, c);
     } else {
@@ -345,7 +363,7 @@ STRIPES_FORCEINLINE T fnmadd(T a, T b, T c) {
     }
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T fnmsub(T a, T b, T c) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T fnmsub(T a, T b, T c) {
     if constexpr (scalar_fma_fused) {
         return std::fma(-a, b, -c);
     } else {
@@ -354,51 +372,51 @@ STRIPES_FORCEINLINE T fnmsub(T a, T b, T c) {
 }
 
 template <std::floating_point T>
-STRIPES_FORCEINLINE T div(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T div(T a, T b) {
     return a / b;
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T sqrt(T a) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T sqrt(T a) {
     return std::sqrt(a);
 }
 /// a < b ? a : b exactly, as the vector min: a NaN on either side, or two zeros, give b.
 template <std::floating_point T>
-STRIPES_FORCEINLINE T min(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T min(T a, T b) {
     return a < b ? a : b;
 }
 /// a > b ? a : b exactly, as the vector max.
 template <std::floating_point T>
-STRIPES_FORCEINLINE T max(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T max(T a, T b) {
     return a > b ? a : b;
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T abs(T a) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T abs(T a) {
     return std::fabs(a);
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T neg(T a) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T neg(T a) {
     return -a;
 }
 
 template <std::floating_point T>
-STRIPES_FORCEINLINE T floor(T x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T floor(T x) {
     return std::floor(x);
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T ceil(T x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T ceil(T x) {
     return std::ceil(x);
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T trunc(T x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T trunc(T x) {
     return std::trunc(x);
 }
 template <std::floating_point T>
-STRIPES_FORCEINLINE T round(T x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T round(T x) {
     return std::round(x);
 }
 /// Ties to even, in the default rounding mode; the vector form ignores the mode.
 template <std::floating_point T>
-STRIPES_FORCEINLINE T round_even(T x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T round_even(T x) {
     return std::nearbyint(x);
 }
 
@@ -407,65 +425,65 @@ STRIPES_FORCEINLINE T round_even(T x) {
 // ---------------------------------------------------------------------------
 
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_eq(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_eq(T a, T b) {
     return a == b;
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_ne(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_ne(T a, T b) {
     return a != b;
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_lt(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_lt(T a, T b) {
     return a < b;
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_le(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_le(T a, T b) {
     return a <= b;
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_gt(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_gt(T a, T b) {
     return a > b;
 }
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE bool cmp_ge(T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool cmp_ge(T a, T b) {
     return a >= b;
 }
 
 template <detail::arithmetic T>
-STRIPES_FORCEINLINE T select(bool mask, T a, T b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T select(bool mask, T a, T b) {
     return mask ? a : b;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool any(B mask) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool any(B mask) {
     return mask;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool all(B mask) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool all(B mask) {
     return mask;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool none(B mask) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool none(B mask) {
     return !mask;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE int count(B mask) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE int count(B mask) {
     return mask ? 1 : 0;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool bitwise_and(B a, B b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool bitwise_and(B a, B b) {
     return a && b;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool bitwise_or(B a, B b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool bitwise_or(B a, B b) {
     return a || b;
 }
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool bitwise_xor(B a, B b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool bitwise_xor(B a, B b) {
     return a != b;
 }
 /// a && !b, as the vector bitwise_andnot is a & ~b.
 template <std::same_as<bool> B>
-STRIPES_FORCEINLINE bool bitwise_andnot(B a, B b) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE bool bitwise_andnot(B a, B b) {
     return a && !b;
 }
 
@@ -476,17 +494,19 @@ STRIPES_FORCEINLINE bool bitwise_andnot(B a, B b) {
 
 template <detail::arithmetic To, detail::arithmetic From>
     requires(sizeof(To) == sizeof(From))
-STRIPES_FORCEINLINE To bitcast(From x) {
-    return std::bit_cast<To>(x);
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE To bitcast(From x) {
+    // The builtin std::bit_cast is made of: a constexpr function of the standard library is a host
+    // function to nvcc, which a kernel cannot call without --expt-relaxed-constexpr.
+    return __builtin_bit_cast(To, x);
 }
 template <int S, std::integral T>
     requires(!std::same_as<T, bool>)
-STRIPES_FORCEINLINE T shift_left(T v) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T shift_left(T v) {
     return static_cast<T>(static_cast<std::make_unsigned_t<T>>(v) << S);
 }
 template <int S, std::integral T>
     requires(!std::same_as<T, bool>)
-STRIPES_FORCEINLINE T shift_right(T v) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE T shift_right(T v) {
     return static_cast<T>(static_cast<std::make_unsigned_t<T>>(v) >> S);
 }
 
@@ -498,14 +518,17 @@ STRIPES_FORCEINLINE T shift_right(T v) {
 /// out-of-range value, as x86 does, where a plain cast would be undefined. Integer to floating point
 /// rounds to nearest, as do double to float and the vector conversions.
 template <detail::arithmetic To, detail::arithmetic From>
-STRIPES_FORCEINLINE To convert(From x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE To convert(From x) {
     if constexpr (std::floating_point<From> && std::integral<To>) {
-        // The range of To as From. Both limits are powers of two, so From holds them exactly.
-        constexpr From low  = static_cast<From>(std::numeric_limits<To>::min());
-        constexpr From high = static_cast<From>(std::numeric_limits<To>::max() / 2 + 1) * From{2};
+        // The range of To as From. Both limits are powers of two, so From holds them exactly. They
+        // are spelled out rather than taken from std::numeric_limits, whose members are host
+        // functions to nvcc.
+        constexpr To   min  = std::is_signed_v<To> ? static_cast<To>(To{1} << (8 * sizeof(To) - 1)) : To{0};
+        constexpr From low  = static_cast<From>(min);
+        constexpr From high = static_cast<From>(To{1} << (8 * sizeof(To) - 1 - std::is_signed_v<To>)) * From{2};
         From const     t    = std::trunc(x);
         if (!(t >= low && t < high)) {
-            return std::numeric_limits<To>::min();
+            return min;
         }
         return static_cast<To>(t);
     } else {

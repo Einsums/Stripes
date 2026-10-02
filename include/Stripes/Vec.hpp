@@ -11,6 +11,11 @@
 #include <cstring>
 #include <type_traits>
 
+#if defined(STRIPES_SCALAR_ONLY)
+#    error "Stripes vectors do not exist in a CUDA or HIP translation unit: include Generic.hpp or Math.hpp there, \
+whose scalar forms kernels call, and instantiate a kernel body with Vec<T> in a C++ translation unit."
+#endif
+
 // Include platform intrinsic headers
 #if defined(__SSE2__) || defined(__AVX__) || defined(__AVX512F__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #    if defined(_MSC_VER)

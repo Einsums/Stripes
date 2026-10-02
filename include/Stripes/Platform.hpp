@@ -48,7 +48,16 @@
 #    define STRIPES_HAVE_FMA 1
 #endif
 
-#if defined(__AVX512F__) && defined(__AVX512VL__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#    define STRIPES_ISA_TIER_ isa_gpu
+/// A CUDA or HIP translation unit, in its host pass and its device pass alike: only the scalar half
+/// of the library exists (Generic.hpp, Math.hpp), every function of it callable from a kernel, and
+/// Vec.hpp stops with an error. A GPU thread is one lane, so a kernel body written over its value
+/// type instantiates with float or double there; its vector instantiations belong in C++ translation
+/// units, which is where the per-rung builds of stripes_add_dispatch_sources() put them anyway.
+/// Both passes see the same declarations, as they must, since the device pass parses host code too.
+#    define STRIPES_SCALAR_ONLY 1
+#elif defined(__AVX512F__) && defined(__AVX512VL__)
 #    define STRIPES_ISA_TIER_ isa_avx512
 #elif defined(__AVX__)
 #    define STRIPES_ISA_TIER_ isa_avx
@@ -452,6 +461,28 @@ inline constexpr size_t native_alignment = (native_bytes > 0) ? static_cast<size
 /// Returns 1 for scalar fallback so loop counts remain valid.
 template <typename T>
 inline constexpr int native_lanes = (native_bits > 0) ? (native_bits / (8 * static_cast<int>(sizeof(T)))) : 1;
+
+// ---------------------------------------------------------------------------
+// The index element type of a T table: the width of T, so an index vector has
+// the lane count of the data it gathers (Gather.hpp). Here rather than in
+// Gather.hpp because the scalar lookup of Generic.hpp names it too, and a CUDA
+// or HIP translation unit has no Gather.hpp. Empty for other types, so
+// gather(base, stride) on them never trips over the index overload.
+// ---------------------------------------------------------------------------
+
+template <typename T>
+struct gather_index {};
+template <>
+struct gather_index<float> {
+    using type = int32_t;
+};
+template <>
+struct gather_index<double> {
+    using type = int64_t;
+};
+/// The index element type gather(base, idx) and lookup(base, idx) take for a T table.
+template <typename T>
+using gather_index_t = typename gather_index<T>::type;
 
 STRIPES_ISA_NAMESPACE_END()
 STRIPES_NAMESPACE_END()

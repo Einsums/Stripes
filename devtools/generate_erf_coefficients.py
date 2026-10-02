@@ -87,8 +87,13 @@ def specialization(kind: str, degrees, top) -> str:
     tail = fit(lambda w: g_of_u(tail_center + tail_half * w), -1, 1, d_tail)
 
     def array(name: str, values) -> str:
-        body = ",\n".join(" " * 8 + literal(v, kind) for v in values)
-        return f"    static constexpr {kind} {name}[{len(values)}] = {{\n{body}}};\n"
+        # A function returning the table by value, not a static array: see coefficients in Math.hpp.
+        body = ", ".join(literal(v, kind) for v in values)
+        return (
+            f"    static constexpr STRIPES_HOST_DEVICE coefficients<{kind}, {len(values)}> {name}() {{\n"
+            f"        return {{{{{body}}}}};\n"
+            "    }\n"
+        )
 
     split = "134217729.0" if kind == "double" else "4097.0f"
     split_power = 27 if kind == "double" else 12

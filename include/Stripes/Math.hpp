@@ -42,44 +42,55 @@ STRIPES_NAMESPACE_BEGIN()
 STRIPES_ISA_NAMESPACE_BEGIN()
 
 namespace detail {
+/// K polynomial coefficients, held by value. The tables below hand them out from constexpr functions
+/// rather than as static constexpr arrays because nvcc lets device code neither bind a reference to
+/// such an array nor index it at run time; a kernel reads a local copy, which the compiler folds into
+/// immediates on every target as it did the arrays.
+template <typename T, int K>
+struct coefficients {
+    T c[K];
+};
+
 template <typename T>
 struct exp_constants;
 
 template <>
 struct exp_constants<double> {
-    using bits_type                       = int64_t;
-    static constexpr int    mantissa_bits = 52;
-    static constexpr double log2e         = 1.4426950408889634074;
-    static constexpr double ln2_hi        = 6.93147180369123816490e-01; // 0x3FE62E42FEE00000: 21 trailing zero bits
-    static constexpr double ln2_lo        = 1.90821492927058770002e-10;
-    static constexpr double lowest        = -746.0;            // e^-746 is below half the smallest subnormal
-    static constexpr double highest       = 710.0;             // e^710 overflows
-    static constexpr double magic         = 0x1.8p52 + 1023.0; // 2^52 + 2^51 plus the exponent bias
-    static constexpr int    terms         = 14;
-    static constexpr double taylor[terms] = {
-        1.0,          1.0,           1.0 / 2.0,      1.0 / 6.0,       1.0 / 24.0,       1.0 / 120.0,       1.0 / 720.0,
-        1.0 / 5040.0, 1.0 / 40320.0, 1.0 / 362880.0, 1.0 / 3628800.0, 1.0 / 39916800.0, 1.0 / 479001600.0, 1.0 / 6227020800.0};
+    using bits_type                                    = int64_t;
+    static constexpr int                 mantissa_bits = 52;
+    static constexpr double              log2e         = 1.4426950408889634074;
+    static constexpr double              ln2_hi        = 6.93147180369123816490e-01; // 0x3FE62E42FEE00000: 21 trailing zero bits
+    static constexpr double              ln2_lo        = 1.90821492927058770002e-10;
+    static constexpr double              lowest        = -746.0;            // e^-746 is below half the smallest subnormal
+    static constexpr double              highest       = 710.0;             // e^710 overflows
+    static constexpr double              magic         = 0x1.8p52 + 1023.0; // 2^52 + 2^51 plus the exponent bias
+    static constexpr int                 terms         = 14;
+    static constexpr STRIPES_HOST_DEVICE coefficients<double, terms> taylor() {
+        return {{1.0, 1.0, 1.0 / 2.0, 1.0 / 6.0, 1.0 / 24.0, 1.0 / 120.0, 1.0 / 720.0, 1.0 / 5040.0, 1.0 / 40320.0, 1.0 / 362880.0,
+                 1.0 / 3628800.0, 1.0 / 39916800.0, 1.0 / 479001600.0, 1.0 / 6227020800.0}};
+    }
 };
 
 template <>
 struct exp_constants<float> {
-    using bits_type                      = int32_t;
-    static constexpr int   mantissa_bits = 23;
-    static constexpr float log2e         = 1.44269504088896341f;
-    static constexpr float ln2_hi        = 0.693359375f; // 0x3F318000: 15 trailing zero bits
-    static constexpr float ln2_lo        = -2.12194440e-4f;
-    static constexpr float lowest        = -104.0f;
-    static constexpr float highest       = 89.0f;
-    static constexpr float magic         = 0x1.8p23f + 127.0f;
-    static constexpr int   terms         = 8;
-    static constexpr float taylor[terms] = {1.0f,         1.0f,          1.0f / 2.0f,   1.0f / 6.0f,
-                                            1.0f / 24.0f, 1.0f / 120.0f, 1.0f / 720.0f, 1.0f / 5040.0f};
+    using bits_type                                    = int32_t;
+    static constexpr int                 mantissa_bits = 23;
+    static constexpr float               log2e         = 1.44269504088896341f;
+    static constexpr float               ln2_hi        = 0.693359375f; // 0x3F318000: 15 trailing zero bits
+    static constexpr float               ln2_lo        = -2.12194440e-4f;
+    static constexpr float               lowest        = -104.0f;
+    static constexpr float               highest       = 89.0f;
+    static constexpr float               magic         = 0x1.8p23f + 127.0f;
+    static constexpr int                 terms         = 8;
+    static constexpr STRIPES_HOST_DEVICE coefficients<float, terms> taylor() {
+        return {{1.0f, 1.0f, 1.0f / 2.0f, 1.0f / 6.0f, 1.0f / 24.0f, 1.0f / 120.0f, 1.0f / 720.0f, 1.0f / 5040.0f}};
+    }
 };
 
 /// 2^k for integral k, from exponent bits: k + bias lands in the low mantissa bits of magic + k, and
 /// the shift moves it into the exponent field and the rest of magic out of the word.
 template <typename V>
-STRIPES_FORCEINLINE V power_of_two(V k) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V power_of_two(V k) {
     using S           = scalar_t<V>;
     using C           = exp_constants<S>;
     auto const biased = bitcast<typename C::bits_type>(k + splat<V>(C::magic));
@@ -93,9 +104,10 @@ concept floating_value = std::same_as<scalar_t<V>, float> || std::same_as<scalar
 /// e^x, lane by lane; see the top of this header.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-STRIPES_FORCEINLINE V exp(V x) {
-    using S = scalar_t<V>;
-    using C = detail::exp_constants<S>;
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V exp(V x) {
+    using S               = scalar_t<V>;
+    using C               = detail::exp_constants<S>;
+    constexpr auto taylor = C::taylor();
 
     // max(lowest, x) and min(highest, .) keep a NaN: each returns its second argument when the
     // comparison is false.
@@ -111,14 +123,14 @@ STRIPES_FORCEINLINE V exp(V x) {
     // rounded exp, either stays near one ulp at worst (VecExp).
     V p;
     if constexpr (scalar_fma_fused) {
-        p = splat<V>(C::taylor[C::terms - 1]);
+        p = splat<V>(taylor.c[C::terms - 1]);
         for (int k = C::terms - 2; k >= 0; --k) {
-            p = fmadd(p, r, splat<V>(C::taylor[k]));
+            p = fmadd(p, r, splat<V>(taylor.c[k]));
         }
     } else {
-        V q = splat<V>(C::taylor[C::terms - 1]);
+        V q = splat<V>(taylor.c[C::terms - 1]);
         for (int k = C::terms - 2; k >= 2; --k) {
-            q = fmadd(q, r, splat<V>(C::taylor[k]));
+            q = fmadd(q, r, splat<V>(taylor.c[k]));
         }
         p = splat<V>(S(1)) + fmadd(r * r, q, r);
     }
@@ -139,7 +151,7 @@ STRIPES_FORCEINLINE V exp(V x) {
 
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-STRIPES_FORCEINLINE V rsqrt(V x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V rsqrt(V x) {
     return div(splat<V>(scalar_t<V>(1)), sqrt(x));
 }
 
@@ -177,26 +189,30 @@ struct erf_constants;
 template <>
 struct erf_constants<double> {
     // E(s) = erf(x) / x - 1 as a polynomial in s = x^2 over [0, 0.25], highest power first.
-    static constexpr double small[9] = {0x1.8b4b60851826bp-20,  -0x1.f224dfc5409afp-17, 0x1.f98db34e8872ep-14,
-                                        -0x1.c02d4f6e4921ap-11, 0x1.565bcbf8e0365p-8,   -0x1.b82ce30f2b28fp-6,
-                                        0x1.ce2f21a03d814p-4,   -0x1.812746b0379b5p-2,  0x1.06eba8214db68p-3};
+    static constexpr STRIPES_HOST_DEVICE coefficients<double, 9> small() {
+        return {{0x1.8b4b60851826bp-20, -0x1.f224dfc5409afp-17, 0x1.f98db34e8872ep-14, -0x1.c02d4f6e4921ap-11, 0x1.565bcbf8e0365p-8,
+                 -0x1.b82ce30f2b28fp-6, 0x1.ce2f21a03d814p-4, -0x1.812746b0379b5p-2, 0x1.06eba8214db68p-3}};
+    }
     // R(x) = erfc(x) e^(x^2) over [0.5, 2] in z = x - mid_center, exact, highest first.
-    static constexpr double mid[20] = {-0x1.e6880b3e6e59fp-31, 0x1.d3beabe60ad52p-29, -0x1.63200e045b8c4p-27, 0x1.442fc009ca791p-25,
-                                       -0x1.27857c651aa40p-23, 0x1.01c0e7cd302b4p-21, -0x1.b5b8f579866b9p-20, 0x1.6a15568a5632fp-18,
-                                       -0x1.22fc4e1dac054p-16, 0x1.c57050abf75f8p-15, -0x1.55c07ce113526p-13, 0x1.f0fe6f32f5cd4p-12,
-                                       -0x1.5b8bc94d17f85p-10, 0x1.d1b695ac27c52p-9,  -0x1.299636d6c488cp-7,  0x1.68a25a663ff1ep-6,
-                                       -0x1.9b635ac624ae6p-5,  0x1.b56f45eef7e7bp-4,  -0x1.abaacdbfa8b07p-3,  0x1.78a692138767ap-2};
+    static constexpr STRIPES_HOST_DEVICE coefficients<double, 20> mid() {
+        return {{-0x1.e6880b3e6e59fp-31, 0x1.d3beabe60ad52p-29,  -0x1.63200e045b8c4p-27, 0x1.442fc009ca791p-25,  -0x1.27857c651aa40p-23,
+                 0x1.01c0e7cd302b4p-21,  -0x1.b5b8f579866b9p-20, 0x1.6a15568a5632fp-18,  -0x1.22fc4e1dac054p-16, 0x1.c57050abf75f8p-15,
+                 -0x1.55c07ce113526p-13, 0x1.f0fe6f32f5cd4p-12,  -0x1.5b8bc94d17f85p-10, 0x1.d1b695ac27c52p-9,   -0x1.299636d6c488cp-7,
+                 0x1.68a25a663ff1ep-6,   -0x1.9b635ac624ae6p-5,  0x1.b56f45eef7e7bp-4,   -0x1.abaacdbfa8b07p-3,  0x1.78a692138767ap-2}};
+    }
     // R(x) over [2, 4] in z = (x - high_center) / high_half.
-    static constexpr double high[20] = {-0x1.765214aed4921p-42, 0x1.d497f9598b60ap-40, -0x1.cd539a8193ddep-38, 0x1.1666810f3d63bp-35,
-                                        -0x1.527f395f218fap-33, 0x1.8c2f441a8c0efp-31, -0x1.c74e1c5371149p-29, 0x1.014e0a0208be0p-26,
-                                        -0x1.1d7922347c7aap-24, 0x1.3699168d7bd7ep-22, -0x1.4b14624a945b9p-20, 0x1.595f1b10ffe11p-18,
-                                        -0x1.6025103cace20p-16, 0x1.5e73930542870p-14, -0x1.53dec9d0889cap-12, 0x1.409cc2ed3f027p-10,
-                                        -0x1.259061ba85698p-8,  0x1.043fe1a98c0d4p-6,  -0x1.bd6ae4d14b16fp-5,  0x1.6e9827d229d2dp-3};
+    static constexpr STRIPES_HOST_DEVICE coefficients<double, 20> high() {
+        return {{-0x1.765214aed4921p-42, 0x1.d497f9598b60ap-40,  -0x1.cd539a8193ddep-38, 0x1.1666810f3d63bp-35,  -0x1.527f395f218fap-33,
+                 0x1.8c2f441a8c0efp-31,  -0x1.c74e1c5371149p-29, 0x1.014e0a0208be0p-26,  -0x1.1d7922347c7aap-24, 0x1.3699168d7bd7ep-22,
+                 -0x1.4b14624a945b9p-20, 0x1.595f1b10ffe11p-18,  -0x1.6025103cace20p-16, 0x1.5e73930542870p-14,  -0x1.53dec9d0889cap-12,
+                 0x1.409cc2ed3f027p-10,  -0x1.259061ba85698p-8,  0x1.043fe1a98c0d4p-6,   -0x1.bd6ae4d14b16fp-5,  0x1.6e9827d229d2dp-3}};
+    }
     // x R(x) over [4, top] in w = (1 / x^2 - tail_center) / tail_half.
-    static constexpr double tail[15]    = {0x1.6ae5899607639p-45, -0x1.8180f45f18194p-43, 0x1.5895d5aac5433p-41, -0x1.9eb09b32b75c9p-39,
-                                           0x1.0cbf39bdce347p-36, -0x1.6dbf769c67944p-34, 0x1.0cc1890919272p-31, -0x1.b028361b59b95p-29,
-                                           0x1.82286d574d16bp-26, -0x1.880166949423ap-23, 0x1.d280b2f57d42ep-20, -0x1.55715458a14a3p-16,
-                                           0x1.4dc49a6929e40p-12, -0x1.028365bb3232bp-7,  0x1.1c75f6fd1ba00p-1};
+    static constexpr STRIPES_HOST_DEVICE coefficients<double, 15> tail() {
+        return {{0x1.6ae5899607639p-45, -0x1.8180f45f18194p-43, 0x1.5895d5aac5433p-41, -0x1.9eb09b32b75c9p-39, 0x1.0cbf39bdce347p-36,
+                 -0x1.6dbf769c67944p-34, 0x1.0cc1890919272p-31, -0x1.b028361b59b95p-29, 0x1.82286d574d16bp-26, -0x1.880166949423ap-23,
+                 0x1.d280b2f57d42ep-20, -0x1.55715458a14a3p-16, 0x1.4dc49a6929e40p-12, -0x1.028365bb3232bp-7, 0x1.1c75f6fd1ba00p-1}};
+    }
     static constexpr double mid_center  = 0x1.4000000000000p+0;
     static constexpr double mid_half    = 0x1.0000000000000p+0;
     static constexpr double high_center = 0x1.8000000000000p+1;
@@ -210,19 +226,25 @@ struct erf_constants<double> {
 template <>
 struct erf_constants<float> {
     // E(s) = erf(x) / x - 1 as a polynomial in s = x^2 over [0, 0.25], highest power first.
-    static constexpr float small[5] = {0x1.3545120000000p-8f, -0x1.b666100000000p-6f, 0x1.ce25100000000p-4f, -0x1.8127320000000p-2f,
-                                       0x1.06eba80000000p-3f};
+    static constexpr STRIPES_HOST_DEVICE coefficients<float, 5> small() {
+        return {{0x1.3545120000000p-8f, -0x1.b666100000000p-6f, 0x1.ce25100000000p-4f, -0x1.8127320000000p-2f, 0x1.06eba80000000p-3f}};
+    }
     // R(x) = erfc(x) e^(x^2) over [0.5, 2] in z = x - mid_center, exact, highest first.
-    static constexpr float mid[11] = {0x1.08ff7a0000000p-14f, -0x1.9398de0000000p-13f, 0x1.eb755c0000000p-12f, -0x1.5711380000000p-10f,
-                                      0x1.d1e2be0000000p-9f,  -0x1.29b9f80000000p-7f,  0x1.68a1cc0000000p-6f,  -0x1.9b62740000000p-5f,
-                                      0x1.b56f460000000p-4f,  -0x1.abaad00000000p-3f,  0x1.78a6920000000p-2f};
+    static constexpr STRIPES_HOST_DEVICE coefficients<float, 11> mid() {
+        return {{0x1.08ff7a0000000p-14f, -0x1.9398de0000000p-13f, 0x1.eb755c0000000p-12f, -0x1.5711380000000p-10f, 0x1.d1e2be0000000p-9f,
+                 -0x1.29b9f80000000p-7f, 0x1.68a1cc0000000p-6f, -0x1.9b62740000000p-5f, 0x1.b56f460000000p-4f, -0x1.abaad00000000p-3f,
+                 0x1.78a6920000000p-2f}};
+    }
     // R(x) over [2, 4] in z = (x - high_center) / high_half.
-    static constexpr float high[10] = {-0x1.7b892a0000000p-20f, 0x1.8e43dc0000000p-18f, -0x1.5d6cfa0000000p-16f, 0x1.5b7afe0000000p-14f,
-                                       -0x1.53ee820000000p-12f, 0x1.40adf20000000p-10f, -0x1.2590420000000p-8f,  0x1.043fc00000000p-6f,
-                                       -0x1.bd6ae40000000p-5f,  0x1.6e98280000000p-3f};
+    static constexpr STRIPES_HOST_DEVICE coefficients<float, 10> high() {
+        return {{-0x1.7b892a0000000p-20f, 0x1.8e43dc0000000p-18f, -0x1.5d6cfa0000000p-16f, 0x1.5b7afe0000000p-14f, -0x1.53ee820000000p-12f,
+                 0x1.40adf20000000p-10f, -0x1.2590420000000p-8f, 0x1.043fc00000000p-6f, -0x1.bd6ae40000000p-5f, 0x1.6e98280000000p-3f}};
+    }
     // x R(x) over [4, top] in w = (1 / x^2 - tail_center) / tail_half.
-    static constexpr float tail[6]     = {-0x1.60e6d00000000p-24f, 0x1.f07ca60000000p-21f, -0x1.a7eeee0000000p-17f,
-                                          0x1.e812860000000p-13f,  -0x1.bafb840000000p-8f, 0x1.1bec2e0000000p-1f};
+    static constexpr STRIPES_HOST_DEVICE coefficients<float, 6> tail() {
+        return {{-0x1.60e6d00000000p-24f, 0x1.f07ca60000000p-21f, -0x1.a7eeee0000000p-17f, 0x1.e812860000000p-13f, -0x1.bafb840000000p-8f,
+                 0x1.1bec2e0000000p-1f}};
+    }
     static constexpr float mid_center  = 0x1.4000000000000p+0f;
     static constexpr float mid_half    = 0x1.0000000000000p+0f;
     static constexpr float high_center = 0x1.8000000000000p+1f;
@@ -234,18 +256,18 @@ struct erf_constants<float> {
 };
 
 /// Horner over coefficients stored highest power first.
-template <typename V, std::size_t K>
-STRIPES_FORCEINLINE V horner(V z, scalar_t<V> const (&c)[K]) {
-    V p = splat<V>(c[0]);
-    for (std::size_t k = 1; k < K; ++k) {
-        p = fmadd(p, z, splat<V>(c[k]));
+template <typename V, int K>
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V horner(V z, coefficients<scalar_t<V>, K> const &c) {
+    V p = splat<V>(c.c[0]);
+    for (int k = 1; k < K; ++k) {
+        p = fmadd(p, z, splat<V>(c.c[k]));
     }
     return p;
 }
 
 /// x^2 = hi + lo exactly: hi rounded, lo its error.
 template <typename V>
-STRIPES_FORCEINLINE void exact_square(V x, V &hi, V &lo) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE void exact_square(V x, V &hi, V &lo) {
     hi = x * x;
     if constexpr (scalar_fma_fused) {
         lo = fmsub(x, x, hi);
@@ -260,7 +282,7 @@ STRIPES_FORCEINLINE void exact_square(V x, V &hi, V &lo) {
 
 /// erfc(a) for a >= 0.5, a no larger than the constants' top.
 template <typename V>
-STRIPES_FORCEINLINE V erfc_tail(V a) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V erfc_tail(V a) {
     using S = scalar_t<V>;
     using C = erf_constants<S>;
     V hi, lo;
@@ -273,17 +295,17 @@ STRIPES_FORCEINLINE V erfc_tail(V a) {
     V          r       = splat<V>(S(0));
     if (any(below_2)) {
         V const z = (a - splat<V>(C::mid_center)) * splat<V>(S(1) / C::mid_half);
-        r         = select(below_2, horner(z, C::mid), r);
+        r         = select(below_2, horner(z, C::mid()), r);
     }
     auto const in_high = bitwise_andnot(below_4, below_2); // not &: for bool masks that gives an int
     if (any(in_high)) {
         V const z = (a - splat<V>(C::high_center)) * splat<V>(S(1) / C::high_half);
-        r         = select(in_high, horner(z, C::high), r);
+        r         = select(in_high, horner(z, C::high()), r);
     }
     if (any(!below_4)) {
         V const u = div(splat<V>(S(1)), hi);
         V const w = (u - splat<V>(C::tail_center)) * splat<V>(S(1) / C::tail_half);
-        r         = select(!below_4, div(horner(w, C::tail), a), r);
+        r         = select(!below_4, div(horner(w, C::tail()), a), r);
     }
     return g * r;
 }
@@ -292,7 +314,7 @@ STRIPES_FORCEINLINE V erfc_tail(V a) {
 /// erf(x), lane by lane; see above.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-STRIPES_FORCEINLINE V erf(V x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V erf(V x) {
     using S          = scalar_t<V>;
     using C          = detail::erf_constants<S>;
     V const    a     = abs(x);
@@ -300,7 +322,7 @@ STRIPES_FORCEINLINE V erf(V x) {
     V          r     = splat<V>(S(0));
     if (any(small)) {
         // x + x E, with x added last and exactly once.
-        r = select(small, fmadd(x, detail::horner(x * x, C::small), x), r);
+        r = select(small, fmadd(x, detail::horner(x * x, C::small()), x), r);
     }
     if (any(!small)) {
         // min(top, a) keeps a NaN, which then reaches the result.
@@ -313,7 +335,7 @@ STRIPES_FORCEINLINE V erf(V x) {
 /// erfc(x) = 1 - erf(x), lane by lane, accurate where erfc is small; see above.
 template <typename V>
     requires(detail::floating_value<V> && (is_vec_v<V> || std::floating_point<V>))
-STRIPES_FORCEINLINE V erfc(V x) {
+STRIPES_FORCEINLINE STRIPES_HOST_DEVICE V erfc(V x) {
     using S          = scalar_t<V>;
     using C          = detail::erf_constants<S>;
     V const    a     = abs(x);
@@ -321,7 +343,7 @@ STRIPES_FORCEINLINE V erfc(V x) {
     V          r     = splat<V>(S(0));
     if (any(small)) {
         // (1 - x) - x E: 1 - erf with its two largest terms taken first.
-        r = select(small, fnmadd(x, detail::horner(x * x, C::small), splat<V>(S(1)) - x), r);
+        r = select(small, fnmadd(x, detail::horner(x * x, C::small()), splat<V>(S(1)) - x), r);
     }
     if (any(!small)) {
         V const t = detail::erfc_tail(min(splat<V>(C::top), a));

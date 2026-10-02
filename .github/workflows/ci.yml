@@ -71,6 +71,50 @@ jobs:
       - name: Test
         run: ctest --test-dir build -j4
 
+  # The scalar forms in CUDA translation units, built by nvcc for the device and its host compiler
+  # for the host, with no other tests. The runners have no GPU, so gpu.ScalarKernels builds its
+  # kernels and reports Skipped; building them is the check that the headers stay device-safe, and
+  # gpu.VecInCudaFails that Vec.hpp still refuses a CUDA translation unit.
+  cuda:
+    name: cuda (${{ matrix.cuda }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda: ["12.9", "13.4"]
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          activate-environment: stripes-cuda
+          conda-remove-defaults: "true"
+      # cuda-nvcc brings the host compiler it supports (gxx_linux-64).
+      - name: Install the CUDA toolkit
+        run: conda install -y "cuda-version=${{ matrix.cuda }}" cuda-nvcc cuda-cudart-dev "cmake>=3.24" ninja
+      - name: Select the conda compiler
+        run: |
+          cxx=""
+          for candidate in "$CONDA_PREFIX"/bin/*-conda-linux-gnu-c++ "$CONDA_PREFIX/bin/g++"; do
+            if [ -x "$candidate" ]; then cxx=$candidate; break; fi
+          done
+          test -n "$cxx" || { echo "::error::no conda-forge C++ compiler in $CONDA_PREFIX/bin"; exit 1; }
+          "$cxx" --version
+          nvcc --version
+          echo "STRIPES_CONDA_CXX=$cxx" >> "$GITHUB_ENV"
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER="$STRIPES_CONDA_CXX"
+          -DCMAKE_CUDA_HOST_COMPILER="$STRIPES_CONDA_CXX" -DCMAKE_CUDA_ARCHITECTURES=80
+          -DSTRIPES_WITH_CUDA_TESTS=ON -DSTRIPES_WITH_TESTS=OFF -DSTRIPES_WITH_EXAMPLES=OFF -DSTRIPES_WITH_BENCHMARKS=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   # Every rung on the runner's own CPU: the baseline and the v2/v3 copies of each suite (v4 too
   # where the runner has AVX-512), the examples, and the per-rung symbol check.
   linux:

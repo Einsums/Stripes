@@ -20,6 +20,7 @@ void scaled_exp(double const *x, double *y, std::size_t n, double a) {
 
 - `Vec<T>` at the target's native width (SSE2 through AVX-512, NEON, fixed-length SVE, or a scalar fallback), wider `Vec<T, N>` for mixed precision at equal lane counts, `Mask<T>`, gathers, shuffles, reductions, and `exp`, `erf`, `erfc` and `rsqrt` that give the same bits for vectors and scalars.
 - One kernel source compiled per instruction-set rung (x86-64 baseline, v2, v3, v4; aarch64 SME and SVE at 128, 256 or 512 bits) with `stripes_add_dispatch_sources()`, chosen at run time by `stripes::selected_arch()`. `STRIPES_ARCH=v2` caps the rung.
+- A kernel body written over its value type also runs in CUDA kernels as its `float` or `double` instantiation, one problem per thread, and matches the CPU bit for bit under the build flags `docs/index.rst` names.
 - Everything is header-only except a small runtime library for CPU detection.
 
 ## Building

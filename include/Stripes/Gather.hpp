@@ -287,23 +287,9 @@ STRIPES_FORCEINLINE Vec<double> gather(double const *base, std::ptrdiff_t stride
 // double. Every index must address a valid element; there is no masking.
 //
 // AVX2 and AVX-512 use their hardware gathers. Everything else, including
-// NEON, which has no gather, reads lane by lane.
+// NEON, which has no gather, reads lane by lane. The index element type is
+// gather_index_t<T> (Platform.hpp).
 // ===========================================================================
-
-// Empty for other types, so gather(base, stride) on them never trips over this overload.
-template <typename T>
-struct gather_index {};
-template <>
-struct gather_index<float> {
-    using type = int32_t;
-};
-template <>
-struct gather_index<double> {
-    using type = int64_t;
-};
-/// The index element type gather(base, idx) takes for a T table.
-template <typename T>
-using gather_index_t = typename gather_index<T>::type;
 
 template <typename T>
 STRIPES_FORCEINLINE Vec<T> gather(T const *base, Vec<gather_index_t<T>> idx);

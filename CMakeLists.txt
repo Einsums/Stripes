@@ -46,6 +46,7 @@ option(STRIPES_SHARED "Build the runtime library shared, so a process holds one 
 option(STRIPES_WITH_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(STRIPES_WITH_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
 option(STRIPES_WITH_BENCHMARKS "Build the kernel benchmarks" ${PROJECT_IS_TOP_LEVEL})
+option(STRIPES_WITH_CUDA_TESTS "Build the CUDA tests of the scalar forms (needs a CUDA compiler; a device to run them)" OFF)
 
 include(StripesDispatch)
 
@@ -153,6 +154,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/StripesConfig.cmake ${CMAKE_CURRENT_BI
 if(STRIPES_WITH_TESTS
    OR STRIPES_WITH_BENCHMARKS
    OR STRIPES_WITH_EXAMPLES
+   OR STRIPES_WITH_CUDA_TESTS
 )
   enable_testing()
 endif()
@@ -182,4 +184,8 @@ if(STRIPES_WITH_BENCHMARKS)
 endif()
 if(STRIPES_WITH_EXAMPLES)
   add_subdirectory(examples)
+endif()
+if(STRIPES_WITH_CUDA_TESTS)
+  enable_language(CUDA)
+  add_subdirectory(tests/gpu)
 endif()

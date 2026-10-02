@@ -252,8 +252,8 @@ One Kernel for Vectors and Scalars
 
 ``Generic.hpp`` lets a kernel be written once as a template over its value
 type and instantiated with ``Vec<double>``, a problem per lane, or with
-``double``, one problem at a time: on a GPU thread, or on the CPU as a
-reference.
+``double``, one problem at a time: on a GPU thread (see `GPU Kernels`_), or
+on the CPU as a reference.
 
 .. code-block:: cpp
 
@@ -345,6 +345,57 @@ Each returns the exact result at its special values (``exp(0) = 1``,
 passes NaN through. They need the integer shifts, which AVX without AVX2
 lacks. Under ``using namespace stripes``, an unqualified ``exp(2.0)``
 still calls the C library; call ``simd::exp`` for these algorithms on scalars.
+
+GPU Kernels
+===========
+
+A GPU thread is one lane, so a kernel body written over its value type runs on
+a CUDA device as its ``float`` or ``double`` instantiation, one problem per
+thread. In a CUDA or HIP translation unit ``Generic.hpp`` and ``Math.hpp`` are
+the scalar half alone, and every function in them is ``__host__ __device__``:
+
+.. code-block:: cpp
+
+    // boys.cu
+    #include <Stripes/Math.hpp>
+
+    template <typename V>
+    __host__ __device__ V attenuated(V r, simd::scalar_t<V> omega) {
+        return simd::erfc(r * omega) / r;               // the body a .cpp file runs on Vec<double>
+    }
+
+    __global__ void kernel(double const *r, double *out, int n) {
+        int const i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i < n) {
+            out[i] = attenuated(r[i], 0.4);
+        }
+    }
+
+The vectors do not exist there: ``Vec.hpp``, and every header that includes it,
+stops with an error in a ``.cu`` file. Instantiate the same body with
+``Vec<T>`` in a C++ translation unit, which is where
+``stripes_add_dispatch_sources()`` compiles a kernel once per rung anyway.
+Both passes of a CUDA compile, host and device, see the same scalar-only
+headers, as they must, since the device pass parses the file's host code too.
+
+The device computes the bits the CPU's scalar instantiation computes, and so
+the bits of each vector lane, when three things hold: the CPU build has FMA
+(a GPU's fused forms always fuse; without FMA the CPU's round twice), neither
+compiler contracts the kernel's own multiplies and adds (``--fmad=false`` for
+nvcc's device code, ``-ffp-contract=off`` for the host compiler and for
+clang), and nothing approximates division or square roots
+(``--use_fast_math``, ``-ffast-math``). The host code of a ``.cu`` file fuses
+too, through ``std::fma``, so it is a bit-exact reference for its own kernels
+on any CPU. The math needs no ``--expt-relaxed-constexpr``.
+
+``tests/gpu`` checks all of this against the CUDA toolkit
+(``-DSTRIPES_WITH_CUDA_TESTS=ON``): CI builds it with nvcc 12.9 and 13.4,
+and on a machine with a CUDA device it runs every scalar operation, ``exp``,
+``erf``, ``erfc``, ``rsqrt`` and the table lookups on the device and in host
+code, comparing them bit for bit. HIP takes the same path (the headers key on
+``__HIPCC__`` as they do on ``__CUDACC__``) but is not tested. Run-time
+compilers (NVRTC, hipRTC) are not supported: they have no host standard
+library, which the headers include.
 
 Mixed Precision at Equal Width
 ==============================
