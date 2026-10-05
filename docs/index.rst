@@ -13,7 +13,8 @@ platform-specific intrinsics behind a C++20 interface that works across:
 
 - x86_64: SSE2, SSSE3, SSE4.1/4.2, AVX, AVX2, and AVX-512.
 - ARM: NEON on Apple Silicon and other aarch64 targets, and fixed-length SVE
-  (128, 256 or 512 bits) through the ``sve<N>`` dispatch rungs.
+  (128, 256 or 512 bits) through the ``sve<N>`` dispatch rungs. The ``sme``
+  rung keeps NEON for ``Vec<T>`` and serves hand-written ZA kernels.
 
 Everything is header-only except a small runtime library that detects the
 CPU and picks a dispatch rung. Stripes started as the ``SIMD`` module of
@@ -630,6 +631,17 @@ NEON itself is the aarch64 baseline.
 
 aarch64 has two kinds of optional rung. ``Sme`` is SME2 with FP64 outer
 products, compiled with ``-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64``.
+Its ``Vec<T>`` is still 128-bit NEON: the flags make SME available, but an
+ordinary function stays in non-streaming mode, so the copy of a ``Vec``
+kernel built for ``Sme`` is the same NEON code as the baseline copy. The rung
+is for hand-written kernels that enter streaming mode themselves
+(``__arm_locally_streaming``, ``__arm_new("za")``) to accumulate outer
+products in the ZA tiles, as Einsums' packed GEMM does. Stripes has no
+streaming-SVE ``Vec<T>`` on purpose: on Apple M4, streaming-SVE vector
+arithmetic is about four times slower than NEON on one core and barely scales
+across cores, since the cores share the matrix unit. Only the outer products
+(FMOPA) beat NEON there.
+
 ``Sve128``, ``Sve256`` and ``Sve512`` are fixed-length SVE, compiled with
 ``-march=armv8.2-a+sve -msve-vector-bits=N``: in their translation units
 ``Vec<T>`` is an SVE register of N bits, masks are predicates, and masked

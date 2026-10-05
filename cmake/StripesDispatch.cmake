@@ -13,7 +13,8 @@
 #:
 #:       stripes_add_dispatch_sources(<out_var>
 #:         IMPL <impl-file>
-#:         [RUNGS <rung>...]        # subset of: baseline v2 v3 v4 (default: all)
+#:         [RUNGS <rung>...]        # subset of: baseline v2 v3 v4 sme sve128 sve256 sve512
+#:                                  # (default: baseline v2 v3 v4)
 #:       )
 #:
 #:    For each rung, a thin wrapper ``.cpp`` is generated into the current
@@ -22,14 +23,20 @@
 #:    1. defines ``STRIPES_ARCH_NS`` to ``arch_<rung>`` (the namespace
 #:       the implementation file must wrap its arch-dependent code in),
 #:    2. defines ``STRIPES_DISPATCH_RUNG`` to the rung's ordinal
-#:       (0 = baseline ... 3 = v4), and
+#:       (0 = baseline ... 3 = v4, 4 = sme, 5..7 = sve128..sve512), and
 #:    3. includes the implementation file,
 #:
 #:    and is given the compiler flags of that rung (``-march=x86-64-v2/-v3/-v4``
-#:    for GCC/Clang, ``/arch:AVX2``/``/arch:AVX512`` for the MSVC driver).
+#:    for GCC/Clang, ``/arch:AVX2``/``/arch:AVX512`` for the MSVC driver;
+#:    ``-march=armv8.2-a+sve -msve-vector-bits=N`` for ``sve<N>``, and
+#:    ``-march=armv8.6-a+fp16+bf16+sme2+sme-f64f64`` for ``sme``).
 #:    Because the Stripes headers key off compiler-defined feature macros, the
 #:    same implementation source widens ``Vec<T>``/``native_lanes``/all
 #:    operations to each rung's register width without source changes.
+#:    The ``sme`` rung is the exception: its ``Vec<T>`` stays 128-bit NEON,
+#:    because ordinary functions do not run in streaming mode. Request it only
+#:    for an implementation file with hand-written ZA kernels; for plain
+#:    ``Vec<T>`` code it is a second copy of the baseline.
 #:
 #:    The generated source list is returned in ``<out_var>`` for passing to
 #:    a target's sources. The rungs actually generated are
@@ -50,11 +57,14 @@
 #:    because a ladder would be meaningless or unreachable:
 #:
 #:    * ``STRIPES_WITH_DISPATCH`` is OFF,
-#:    * the target processor is not x86-64 (the v2/v3/v4 rungs are x86
-#:      levels; on aarch64 the toolchain baseline already includes NEON),
+#:    * the target processor is neither x86-64 nor aarch64, or
 #:    * ``STRIPES_NATIVE_ARCH`` or ``STRIPES_TARGET_CPU`` pins the
 #:      whole SIMD interface to a specific CPU (the pin raises every TU's
 #:      baseline, so a runtime ladder below it can never be selected).
+#:
+#:    On aarch64 the x86 rungs collapse to ``native`` (NEON is the toolchain
+#:    baseline), and the requested ``sme`` and ``sve<N>`` rungs are built
+#:    alongside it. On x86-64 a requested aarch64 rung is ignored.
 #:
 #:    Independent of that, individual rungs are dropped (degrading toward
 #:    the always-present baseline) when their flag is unusable: the true
@@ -282,10 +292,6 @@ function(stripes_add_dispatch_sources out_var)
   # Single-TU mode: no ladder. The wrapper compiles at the ambient flags in
   # the arch_native namespace, and consumers get STRIPES_HAS_RUNG_NATIVE
   # instead of the per-rung definitions.
-  #
-  # On aarch64 the x86 rungs (baseline/v2/v3/v4) collapse to `native`, but a
-  # requested `sme` rung survives alongside it: NEON is the toolchain
-  # baseline (native), and SME2 is the one optional aarch64 rung.
   if(_pinned OR NOT STRIPES_WITH_DISPATCH)
     set(_simd_RUNGS native)
   elseif(_is_aarch64)
@@ -299,7 +305,8 @@ function(stripes_add_dispatch_sources out_var)
     endforeach()
     set(_simd_RUNGS ${_arm_rungs})
   elseif(_is_x86)
-    list(REMOVE_ITEM _simd_RUNGS sme)
+    # The aarch64 rungs have no x86 meaning; dropping them here keeps them out of the flag probe.
+    list(REMOVE_ITEM _simd_RUNGS sme sve128 sve256 sve512)
     if(NOT _simd_RUNGS)
       set(_simd_RUNGS native)
     endif()
