@@ -248,17 +248,15 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 // ---------------------------------------------------------------------------
 // x86 SSE2: 128-bit registers
 // ---------------------------------------------------------------------------
-#elif defined(__SSE__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 
 // 2×2 double transpose (SSE2)
-#    ifdef __SSE2__
 STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
     auto const lo = _mm_unpacklo_pd(rows[0], rows[1]);
     auto const hi = _mm_unpackhi_pd(rows[0], rows[1]);
     rows[0]       = lo;
     rows[1]       = hi;
 }
-#    endif
 
 // 4×4 float transpose (SSE)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
