@@ -192,10 +192,10 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 
 // 4×4 double transpose (AVX)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
-    auto const t0 = _mm256_shuffle_pd(rows[0], rows[1], 0x0); // a0 b0 a2 b2
-    auto const t1 = _mm256_shuffle_pd(rows[0], rows[1], 0xf); // a1 b1 a3 b3
-    auto const t2 = _mm256_shuffle_pd(rows[2], rows[3], 0x0); // c0 d0 c2 d2
-    auto const t3 = _mm256_shuffle_pd(rows[2], rows[3], 0xf); // c1 d1 c3 d3
+    auto const t0 = _mm256_unpacklo_pd(rows[0], rows[1]); // a0 b0 a2 b2
+    auto const t1 = _mm256_unpackhi_pd(rows[0], rows[1]); // a1 b1 a3 b3
+    auto const t2 = _mm256_unpacklo_pd(rows[2], rows[3]); // c0 d0 c2 d2
+    auto const t3 = _mm256_unpackhi_pd(rows[2], rows[3]); // c1 d1 c3 d3
     rows[0]       = _mm256_permute2f128_pd(t0, t2, 0x20);
     rows[1]       = _mm256_permute2f128_pd(t1, t3, 0x20);
     rows[2]       = _mm256_permute2f128_pd(t0, t2, 0x31);
@@ -226,12 +226,12 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 
     // Phase 2: 2×2 block shuffle
     auto const s0 = _mm256_shuffle_ps(row0_iter2, row2_iter2, 0x44);
-    auto const s1 = _mm256_shuffle_ps(row0_iter2, row2_iter2, 0xee);
-    auto const s2 = _mm256_shuffle_ps(row1_iter2, row3_iter2, 0x44);
+    auto const s1 = _mm256_shuffle_ps(row1_iter2, row3_iter2, 0x44);
+    auto const s2 = _mm256_shuffle_ps(row0_iter2, row2_iter2, 0xee);
     auto const s3 = _mm256_shuffle_ps(row1_iter2, row3_iter2, 0xee);
     auto const s4 = _mm256_shuffle_ps(row4_iter2, row6_iter2, 0x44);
-    auto const s5 = _mm256_shuffle_ps(row4_iter2, row6_iter2, 0xee);
-    auto const s6 = _mm256_shuffle_ps(row5_iter2, row7_iter2, 0x44);
+    auto const s5 = _mm256_shuffle_ps(row5_iter2, row7_iter2, 0x44);
+    auto const s6 = _mm256_shuffle_ps(row4_iter2, row6_iter2, 0xee);
     auto const s7 = _mm256_shuffle_ps(row5_iter2, row7_iter2, 0xee);
 
     // Phase 3: cross-lane permute

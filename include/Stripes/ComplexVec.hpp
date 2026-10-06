@@ -300,7 +300,11 @@ STRIPES_FORCEINLINE CVec<float> complex_mul(CVec<float> a, CVec<float> b) {
     auto b_swap = _mm256_shuffle_ps(b.reg, b.reg, 0xB1); // 10_11_00_01
     auto t2     = _mm256_mul_ps(a_ii, b_swap);
 #        if defined(STRIPES_HAVE_FMA)
+#            if defined(__FMA__) || (defined(_MSC_VER) && defined(__AVX2__))
     return _mm256_fmaddsub_ps(a_rr, b.reg, t2); // even: a_rr*b - t2, odd: a_rr*b + t2
+#            elif defined(__FMA4__)
+    return _mm256_maddsub_ps(a_rr, b.reg, t2); // even: a_rr*b - t2, odd: a_rr*b + t2
+#            endif
 #        else
     return _mm256_addsub_ps(_mm256_mul_ps(a_rr, b.reg), t2); // even: t1-t2, odd: t1+t2
 #        endif
@@ -312,7 +316,11 @@ STRIPES_FORCEINLINE CVec<double> complex_mul(CVec<double> a, CVec<double> b) {
     auto b_swap = _mm256_shuffle_pd(b.reg, b.reg, 0x5); // swap re<->im
     auto t2     = _mm256_mul_pd(a_ii, b_swap);
 #        if defined(STRIPES_HAVE_FMA)
+#            if defined(__FMA__) || (defined(_MSC_VER) && defined(__AVX2__))
     return _mm256_fmaddsub_pd(a_rr, b.reg, t2);
+#            elif defined(__FMA4__)
+    return _mm256_maddsub_pd(a_rr, b.reg, t2);
+#            endif
 #        else
     return _mm256_addsub_pd(_mm256_mul_pd(a_rr, b.reg), t2);
 #        endif
