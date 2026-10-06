@@ -527,7 +527,7 @@ template <>
 STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
     return _mm256_fmadd_pd(a, b, c);
 }
-#elif defined(__FMA4__)
+#    elif defined(__FMA4__)
 template <>
 STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
     return _mm256_macc_ps(a, b, c);
@@ -932,7 +932,7 @@ STRIPES_FMA_FORMS(double, _mm512_fmsub_pd, _mm512_fnmadd_pd, _mm512_fnmsub_pd)
 #    elif defined(__FMA__) || (defined(_MSC_VER) && defined(__AVX2__))
 STRIPES_FMA_FORMS(float, _mm256_fmsub_ps, _mm256_fnmadd_ps, _mm256_fnmsub_ps)
 STRIPES_FMA_FORMS(double, _mm256_fmsub_pd, _mm256_fnmadd_pd, _mm256_fnmsub_pd)
-#elif defined(__FMA4__)
+#    elif defined(__FMA4__)
 STRIPES_FMA_FORMS(float, _mm_msub_ps, _mm_nmadd_ps, _mm_nmsub_ps)
 STRIPES_FMA_FORMS(double, _mm_msub_pd, _mm_nmadd_pd, _mm_nmsub_pd)
 #    endif
