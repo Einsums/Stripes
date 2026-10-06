@@ -518,7 +518,7 @@ template <>
 STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
     return _mm512_fmadd_pd(a, b, c);
 }
-#    elif defined(__AVX__)
+#    elif defined(__FMA__) // FMA supercedes AVX. That is, if FMA/FMA4 is supported, so is AVX
 template <>
 STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
     return _mm256_fmadd_ps(a, b, c);
@@ -527,23 +527,14 @@ template <>
 STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
     return _mm256_fmadd_pd(a, b, c);
 }
-#    elif defined(__FMA__) // SSE + FMA (rare but possible)
-template <>
-STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
-    return _mm_fmadd_ps(a, b, c);
-}
-template <>
-STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
-    return _mm_fmadd_pd(a, b, c);
-}
 #elif defined(__FMA4__)
 template <>
 STRIPES_FORCEINLINE Vec<float> fmadd(Vec<float> a, Vec<float> b, Vec<float> c) {
-    return _mm_macc_ps(a, b, c);
+    return _mm256_macc_ps(a, b, c);
 }
 template <>
 STRIPES_FORCEINLINE Vec<double> fmadd(Vec<double> a, Vec<double> b, Vec<double> c) {
-    return _mm_macc_pd(a, b, c);
+    return _mm256_macc_pd(a, b, c);
 }
 #    endif
 // ARM NEON: FMA is always available on aarch64
@@ -938,10 +929,7 @@ STRIPES_FORCEINLINE Vec<T> fnmsub(Vec<T> a, Vec<T> b, Vec<T> c);
 #    if defined(__AVX512F__) && defined(__AVX512VL__)
 STRIPES_FMA_FORMS(float, _mm512_fmsub_ps, _mm512_fnmadd_ps, _mm512_fnmsub_ps)
 STRIPES_FMA_FORMS(double, _mm512_fmsub_pd, _mm512_fnmadd_pd, _mm512_fnmsub_pd)
-#    elif defined(__AVX__)
-STRIPES_FMA_FORMS(float, _mm256_fmsub_ps, _mm256_fnmadd_ps, _mm256_fnmsub_ps)
-STRIPES_FMA_FORMS(double, _mm256_fmsub_pd, _mm256_fnmadd_pd, _mm256_fnmsub_pd)
-#    elif defined(__FMA__)
+#    elif defined(__FMA__) || (defiend(_MSC_VER) && defined(__AVX2__))
 STRIPES_FMA_FORMS(float, _mm_fmsub_ps, _mm_fnmadd_ps, _mm_fnmsub_ps)
 STRIPES_FMA_FORMS(double, _mm_fmsub_pd, _mm_fnmadd_pd, _mm_fnmsub_pd)
 #elif defined(__FMA4__)
