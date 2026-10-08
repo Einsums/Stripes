@@ -1,0 +1,17 @@
+name: Install Intel SDE
+description: Download Intel's Software Development Emulator, check it against Intel's hash, and put its path in SDE64.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SDE_TARBALL: sde-external-10.13.1-2026-07-28-lin.tar.xz
+        # Intel's published SHA-256 for this tarball.
+        SDE_SHA256: 94e97d623fec54385686e1e7ba65ebc9941748c05ee451423948334892bf2b50
+      run: |
+        curl -fsSL --retry 3 -o "$RUNNER_TEMP/$SDE_TARBALL" \
+          "https://github.com/petarpetrovt/setup-sde/releases/download/binaries/$SDE_TARBALL"
+        echo "$SDE_SHA256  $RUNNER_TEMP/$SDE_TARBALL" | sha256sum -c -
+        mkdir -p "$RUNNER_TEMP/sde"
+        tar -xJf "$RUNNER_TEMP/$SDE_TARBALL" -C "$RUNNER_TEMP/sde" --strip-components=1
+        echo "SDE64=$RUNNER_TEMP/sde/sde64" >> "$GITHUB_ENV"

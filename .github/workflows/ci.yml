@@ -15,6 +15,9 @@ permissions:
 
 env:
   CTEST_OUTPUT_ON_FAILURE: "1"
+  # apt.llvm.org's clang for the jobs that take it; the linux job keeps Ubuntu's own clang as the
+  # oldest one checked.
+  LLVM_VERSION: "22"
 
 jobs:
   pre-commit:
@@ -157,20 +160,12 @@ jobs:
           key: ${{ github.job }}-${{ strategy.job-index }}
           max-size: 500M
       - run: sudo apt-get update && sudo apt-get install -y ninja-build
-      - name: Install Intel SDE
-        env:
-          SDE_TARBALL: sde-external-10.13.1-2026-07-28-lin.tar.xz
-          # Intel's published SHA-256 for this tarball.
-          SDE_SHA256: 94e97d623fec54385686e1e7ba65ebc9941748c05ee451423948334892bf2b50
-        run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$SDE_TARBALL" \
-            "https://github.com/petarpetrovt/setup-sde/releases/download/binaries/$SDE_TARBALL"
-          echo "$SDE_SHA256  $RUNNER_TEMP/$SDE_TARBALL" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/sde"
-          tar -xJf "$RUNNER_TEMP/$SDE_TARBALL" -C "$RUNNER_TEMP/sde" --strip-components=1
-          echo "SDE64=$RUNNER_TEMP/sde/sde64" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/install-llvm
+        with:
+          version: ${{ env.LLVM_VERSION }}
+      - uses: ./.github/actions/install-sde
       - name: Configure
-        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++-18
+        run: cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++-${{ env.LLVM_VERSION }}
       - name: Build
         run: cmake --build build
       - name: Test under SDE
@@ -178,6 +173,63 @@ jobs:
           set -o pipefail
           "$SDE64" -spr -- ctest --test-dir build -j4 --timeout 3600 | tee sde-ctest.log
           # A Skipped test here means the guard did not see the emulated CPU.
+          if grep -q "did not run" sde-ctest.log; then
+            echo "::error::tests were skipped under SDE"
+            exit 1
+          fi
+
+  # The headers pinned to one real CPU each (STRIPES_TARGET_CPU), so every instruction-set tier's
+  # branches are compiled, including the ones no x86-64-vN level lands on: SSE without SSE4.1, AVX
+  # without AVX2, AVX-VNNI without AVX-512, AVX-512 FP16 and BF16, AVX10.2. The rungs only cover the
+  # levels. A current clang, because an older one cannot name the newest CPUs.
+  # Intel CPUs run the tests on SDE emulating that CPU. SDE has no AMD models, so the AMD CPUs
+  # (FMA4 on bdver1, and the Zen feature sets) are built and linked but not run.
+  target-cpu:
+    name: target-cpu (${{ matrix.cpu }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpu: nocona, sde: -p4p }
+          - { cpu: core2, sde: -mrm }
+          - { cpu: nehalem, sde: -nhm }
+          - { cpu: sandybridge, sde: -snb }
+          - { cpu: haswell, sde: -hsw }
+          - { cpu: skylake-avx512, sde: -skx }
+          - { cpu: icelake-server, sde: -icx }
+          - { cpu: alderlake, sde: -adl }
+          - { cpu: sapphirerapids, sde: -spr }
+          - { cpu: diamondrapids, sde: -dmr }
+          - { cpu: bdver1, sde: "" }
+          - { cpu: znver3, sde: "" }
+          - { cpu: znver4, sde: "" }
+          - { cpu: znver5, sde: "" }
+    steps:
+      - uses: actions/checkout@v7
+      # One cache per job and matrix entry: compiling is most of every job's time.
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: ${{ github.job }}-${{ strategy.job-index }}
+          max-size: 500M
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: ./.github/actions/install-llvm
+        with:
+          version: ${{ env.LLVM_VERSION }}
+      - if: matrix.sde != ''
+        uses: ./.github/actions/install-sde
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++-${{ env.LLVM_VERSION }}
+          -DSTRIPES_TARGET_CPU=${{ matrix.cpu }}
+      - name: Build
+        run: cmake --build build
+      - name: Test under SDE
+        if: matrix.sde != ''
+        run: |
+          set -o pipefail
+          "$SDE64" ${{ matrix.sde }} -- ctest --test-dir build -j4 --timeout 3600 | tee sde-ctest.log
+          # A Skipped test here means a guard did not see the emulated CPU.
           if grep -q "did not run" sde-ctest.log; then
             echo "::error::tests were skipped under SDE"
             exit 1
@@ -193,9 +245,12 @@ jobs:
           key: ${{ github.job }}-${{ strategy.job-index }}
           max-size: 500M
       - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: ./.github/actions/install-llvm
+        with:
+          version: ${{ env.LLVM_VERSION }}
       - name: Configure
         run: >
-          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++-18
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++-${{ env.LLVM_VERSION }}
           "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
           "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
           "-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined"
