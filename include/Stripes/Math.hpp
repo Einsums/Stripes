@@ -35,7 +35,7 @@
 //
 // The maximum error against a correctly rounded exp is measured in the unit
 // tests (VecExp). It needs the 32- or 64-bit integer shift and add, which AVX
-// without AVX2 does not have.
+// without AVX2 runs on each 128-bit half.
 // ===========================================================================
 
 STRIPES_NAMESPACE_BEGIN()

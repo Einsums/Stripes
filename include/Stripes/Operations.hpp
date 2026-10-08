@@ -19,6 +19,26 @@
 STRIPES_NAMESPACE_BEGIN()
 STRIPES_ISA_NAMESPACE_BEGIN()
 
+#if defined(__AVX__) && !defined(__AVX2__) && !(defined(__AVX512F__) && defined(__AVX512VL__))
+namespace detail {
+/// AVX without AVX2 keeps the integer Vecs in a 256-bit register but has no instruction that does
+/// integer arithmetic on one, so an integer operation runs @p op, an SSE form, on each 128-bit half
+/// and puts the halves back together. Only VEXTRACTF128 and VINSERTF128 touch the 256-bit register.
+template <typename Op>
+STRIPES_FORCEINLINE __m256i on_halves(__m256i a, Op op) {
+    __m128i const lo = op(_mm256_castsi256_si128(a));
+    __m128i const hi = op(_mm256_extractf128_si256(a, 1));
+    return _mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1);
+}
+template <typename Op>
+STRIPES_FORCEINLINE __m256i on_halves(__m256i a, __m256i b, Op op) {
+    __m128i const lo = op(_mm256_castsi256_si128(a), _mm256_castsi256_si128(b));
+    __m128i const hi = op(_mm256_extractf128_si256(a, 1), _mm256_extractf128_si256(b, 1));
+    return _mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1);
+}
+} // namespace detail
+#endif
+
 // ===========================================================================
 // Broadcast: scalar → Vec<T>
 // ===========================================================================
@@ -1627,8 +1647,10 @@ STRIPES_FORCEINLINE void storea(uint64_t *p, Vec<uint64_t> v) {
 // different operation we skip here).
 //
 // Coverage caveats for instructions that don't exist on the tier:
-//   - SSE2 has no 32-bit integer multiply (added in SSE4.1 as PMULLD); we
-//     skip Vec<int32_t>/Vec<uint32_t> mul on SSE2 unless SSE4.1 is on.
+//   - SSE2 has no 32-bit integer multiply (added in SSE4.1 as PMULLD), so
+//     without SSE4.1 it is built from two PMULUDQ.
+//   - AVX without AVX2 has no 256-bit integer instructions at all, so every
+//     integer operation there runs the SSE4 form on each 128-bit half.
 //   - SSE2/AVX/AVX2 have no native 64-bit element multiply. AVX-512DQ adds
 //     VPMULLQ; without DQ we skip i64/u64 mul on those tiers.
 //   - aarch64 NEON has no 64-bit integer vector multiply (vmulq_s64 only
@@ -1691,9 +1713,6 @@ STRIPES_FORCEINLINE Vec<uint64_t> mul(Vec<uint64_t> a, Vec<uint64_t> b) {
 }
 #    endif
 #elif defined(__AVX2__)
-// 256-bit integer arithmetic requires AVX2; AVX1 only had float ops.
-// Chips with __AVX__ but not __AVX2__ get a link error here, which is the
-// right signal: the integer Vec on that tier won't work.
 template <>
 STRIPES_FORCEINLINE Vec<int32_t> add(Vec<int32_t> a, Vec<int32_t> b) {
     return _mm256_add_epi32(a.reg, b.reg);
@@ -1736,9 +1755,29 @@ STRIPES_FORCEINLINE Vec<uint32_t> mul(Vec<uint32_t> a, Vec<uint32_t> b) {
 }
 // i64/u64 mul not implemented; needs AVX-512DQ.
 #elif defined(__AVX__)
-// AVX without AVX2 has no 256-bit integer instructions, and the integer Vecs
-// are __m256i here, so no SSE2 form fits them: these operations are left
-// undefined for that tier, and a call is a link error.
+// Each 128-bit half in SSE (see detail::on_halves). AVX implies SSE4.1, so PMULLD is there.
+#    define STRIPES_AVX_INT_ARITH(T, ADD, SUB)                                                                                             \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> add(Vec<T> a, Vec<T> b) {                                                                               \
+            return detail::on_halves(a.reg, b.reg, [](__m128i x, __m128i y) { return ADD(x, y); });                                        \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> sub(Vec<T> a, Vec<T> b) {                                                                               \
+            return detail::on_halves(a.reg, b.reg, [](__m128i x, __m128i y) { return SUB(x, y); });                                        \
+        }
+STRIPES_AVX_INT_ARITH(int32_t, _mm_add_epi32, _mm_sub_epi32)
+STRIPES_AVX_INT_ARITH(uint32_t, _mm_add_epi32, _mm_sub_epi32)
+STRIPES_AVX_INT_ARITH(int64_t, _mm_add_epi64, _mm_sub_epi64)
+STRIPES_AVX_INT_ARITH(uint64_t, _mm_add_epi64, _mm_sub_epi64)
+#    undef STRIPES_AVX_INT_ARITH
+template <>
+STRIPES_FORCEINLINE Vec<int32_t> mul(Vec<int32_t> a, Vec<int32_t> b) {
+    return detail::on_halves(a.reg, b.reg, [](__m128i x, __m128i y) { return _mm_mullo_epi32(x, y); });
+}
+template <>
+STRIPES_FORCEINLINE Vec<uint32_t> mul(Vec<uint32_t> a, Vec<uint32_t> b) {
+    return detail::on_halves(a.reg, b.reg, [](__m128i x, __m128i y) { return _mm_mullo_epi32(x, y); });
+}
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <>
 STRIPES_FORCEINLINE Vec<int32_t> add(Vec<int32_t> a, Vec<int32_t> b) {
@@ -1983,10 +2022,20 @@ STRIPES_FORCEINLINE Vec<T> bitwise_xor(Vec<T> a, Vec<T> b);
             return _mm256_xor_si256(a.reg, b.reg);                                                                                         \
         }
 #elif defined(__AVX__)
-// AVX without AVX2 has no 256-bit integer instructions, and the integer Vecs
-// are __m256i here, so no SSE2 form fits them: these operations are left
-// undefined for that tier, and a call is a link error.
-#    define STRIPES_INT_BITWISE(T) /* nothing; see above */
+// No integer VPAND/VPOR/VPXOR before AVX2, but the float forms move the same bits in one instruction.
+#    define STRIPES_INT_BITWISE(T)                                                                                                         \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_and(Vec<T> a, Vec<T> b) {                                                                       \
+            return _mm256_castps_si256(_mm256_and_ps(_mm256_castsi256_ps(a.reg), _mm256_castsi256_ps(b.reg)));                             \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_or(Vec<T> a, Vec<T> b) {                                                                        \
+            return _mm256_castps_si256(_mm256_or_ps(_mm256_castsi256_ps(a.reg), _mm256_castsi256_ps(b.reg)));                              \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Vec<T> bitwise_xor(Vec<T> a, Vec<T> b) {                                                                       \
+            return _mm256_castps_si256(_mm256_xor_ps(_mm256_castsi256_ps(a.reg), _mm256_castsi256_ps(b.reg)));                             \
+        }
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #    define STRIPES_INT_BITWISE(T)                                                                                                         \
         template <>                                                                                                                        \
@@ -2178,9 +2227,39 @@ STRIPES_FORCEINLINE Vec<uint64_t> shift_right(Vec<uint64_t> v) {
     return _mm256_srli_epi64(v.reg, N);
 }
 #elif defined(__AVX__)
-// AVX without AVX2 has no 256-bit integer instructions, and the integer Vecs
-// are __m256i here, so no SSE2 form fits them: these operations are left
-// undefined for that tier, and a call is a link error.
+// Each 128-bit half in SSE (see detail::on_halves).
+template <int N>
+STRIPES_FORCEINLINE Vec<int32_t> shift_left(Vec<int32_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_slli_epi32(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_left(Vec<uint32_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_slli_epi32(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int64_t> shift_left(Vec<int64_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_slli_epi64(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_left(Vec<uint64_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_slli_epi64(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int32_t> shift_right(Vec<int32_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_srli_epi32(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint32_t> shift_right(Vec<uint32_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_srli_epi32(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<int64_t> shift_right(Vec<int64_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_srli_epi64(x, N); });
+}
+template <int N>
+STRIPES_FORCEINLINE Vec<uint64_t> shift_right(Vec<uint64_t> v) {
+    return detail::on_halves(v.reg, [](__m128i x) { return _mm_srli_epi64(x, N); });
+}
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <int N>
 STRIPES_FORCEINLINE Vec<int32_t> shift_left(Vec<int32_t> v) {
@@ -2372,9 +2451,9 @@ STRIPES_X86_VAR_SHIFTS(uint32_t, _mm256_sllv_epi32, _mm256_srlv_epi32)
 STRIPES_X86_VAR_SHIFTS(int64_t, _mm256_sllv_epi64, _mm256_srlv_epi64)
 STRIPES_X86_VAR_SHIFTS(uint64_t, _mm256_sllv_epi64, _mm256_srlv_epi64)
 #    undef STRIPES_X86_VAR_SHIFTS
-#elif defined(__AVX__)
-// No 256-bit integer instructions; see the comment above.
-#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#elif defined(__AVX__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+// AVX without AVX2 has no per-lane shift either, and takes the SSE forms below: the 32-bit lanes go
+// through memory at any width, and the 64-bit form runs on each 128-bit half.
 namespace detail {
 template <typename T, typename Shift>
 STRIPES_FORCEINLINE Vec<T> shift_lanes(Vec<T> v, Vec<T> count, Shift shift) {
@@ -2399,6 +2478,13 @@ STRIPES_FORCEINLINE __m128i shift_two_lanes(__m128i v, __m128i count, Shift shif
     __m128i const high = shift(v, _mm_unpackhi_epi64(count, count));
     return _mm_castpd_si128(_mm_move_sd(_mm_castsi128_pd(high), _mm_castsi128_pd(low)));
 }
+#    if defined(__AVX__)
+/// The same, two lanes at a time, on each 128-bit half of an AVX register.
+template <typename Shift>
+STRIPES_FORCEINLINE __m256i shift_two_lanes(__m256i v, __m256i count, Shift shift) {
+    return on_halves(v, count, [shift](__m128i x, __m128i n) { return shift_two_lanes(x, n, shift); });
+}
+#    endif
 } // namespace detail
 
 #    define STRIPES_SSE_VAR_SHIFTS_32(T)                                                                                                   \
@@ -2544,8 +2630,8 @@ STRIPES_SCALAR_VAR_SHIFTS(uint64_t)
 // ~true is -2, which is still true.
 //
 // AVX without AVX2 has no 256-bit integer instructions, so there the integer
-// comparisons are left undefined, as every integer operation is; select and
-// the mask logic go through the floating-point domain and work for every type.
+// comparisons run on each 128-bit half; select and the mask logic go through
+// the floating-point domain in one instruction.
 // ===========================================================================
 
 namespace detail {
@@ -3195,10 +3281,9 @@ STRIPES_X86_FCMP(cmp_ge, _CMP_GE_OQ, _mm_cmpge_ps, _mm_cmpge_pd)
 // operands, le and ge invert, and the unsigned forms flip each operand's top
 // bit first, which maps unsigned order onto signed order. SSE2 without SSE4.1
 // and SSE4.2 has no 64-bit equality or greater-than and builds them from the
-// 32-bit halves.
-#    if defined(__AVX2__) || !defined(__AVX__)
+// 32-bit halves. AVX without AVX2 compares each 128-bit half in SSE4.
 namespace detail {
-#        if defined(__AVX2__)
+#    if defined(__AVX2__)
 STRIPES_FORCEINLINE __m256i equal32(__m256i a, __m256i b) {
     return _mm256_cmpeq_epi32(a, b);
 }
@@ -3211,31 +3296,45 @@ STRIPES_FORCEINLINE __m256i signed_gt32(__m256i a, __m256i b) {
 STRIPES_FORCEINLINE __m256i signed_gt64(__m256i a, __m256i b) {
     return _mm256_cmpgt_epi64(a, b);
 }
-#        else
+#    elif defined(__AVX__)
+// AVX implies SSE4.2, so PCMPEQQ and PCMPGTQ are there.
+STRIPES_FORCEINLINE __m256i equal32(__m256i a, __m256i b) {
+    return on_halves(a, b, [](__m128i x, __m128i y) { return _mm_cmpeq_epi32(x, y); });
+}
+STRIPES_FORCEINLINE __m256i equal64(__m256i a, __m256i b) {
+    return on_halves(a, b, [](__m128i x, __m128i y) { return _mm_cmpeq_epi64(x, y); });
+}
+STRIPES_FORCEINLINE __m256i signed_gt32(__m256i a, __m256i b) {
+    return on_halves(a, b, [](__m128i x, __m128i y) { return _mm_cmpgt_epi32(x, y); });
+}
+STRIPES_FORCEINLINE __m256i signed_gt64(__m256i a, __m256i b) {
+    return on_halves(a, b, [](__m128i x, __m128i y) { return _mm_cmpgt_epi64(x, y); });
+}
+#    else
 STRIPES_FORCEINLINE __m128i equal32(__m128i a, __m128i b) {
     return _mm_cmpeq_epi32(a, b);
 }
-#            if defined(__SSE4_1__)
+#        if defined(__SSE4_1__)
 // PCMPEQQ is SSE4.1.
 STRIPES_FORCEINLINE __m128i equal64(__m128i a, __m128i b) {
     return _mm_cmpeq_epi64(a, b);
 }
-#            else
+#        else
 // No PCMPEQQ: compare the 32-bit halves, then AND each 64-bit lane with its half-swapped self so a
 // lane is all-ones only when both halves matched.
 STRIPES_FORCEINLINE __m128i equal64(__m128i a, __m128i b) {
     __m128i const t = _mm_cmpeq_epi32(a, b);
     return _mm_and_si128(t, _mm_shuffle_epi32(t, _MM_SHUFFLE(2, 3, 0, 1)));
 }
-#            endif
+#        endif
 STRIPES_FORCEINLINE __m128i signed_gt32(__m128i a, __m128i b) {
     return _mm_cmpgt_epi32(a, b);
 }
-#            if defined(__SSE4_2__)
+#        if defined(__SSE4_2__)
 STRIPES_FORCEINLINE __m128i signed_gt64(__m128i a, __m128i b) {
     return _mm_cmpgt_epi64(a, b);
 }
-#            else
+#        else
 // A 64-bit lane is greater when its signed high half is, or when the high halves are equal and its
 // low half is greater as an unsigned number. The answer lands in the high half and is copied down.
 STRIPES_FORCEINLINE __m128i signed_gt64(__m128i a, __m128i b) {
@@ -3247,8 +3346,8 @@ STRIPES_FORCEINLINE __m128i signed_gt64(__m128i a, __m128i b) {
     __m128i const result = _mm_or_si128(hi_gt, _mm_and_si128(hi_eq, lo_up));
     return _mm_shuffle_epi32(result, _MM_SHUFFLE(3, 3, 1, 1));
 }
-#            endif
 #        endif
+#    endif
 
 template <typename T>
 STRIPES_FORCEINLINE Mask<T> ordered_gt(Vec<T> a, Vec<T> b) {
@@ -3274,37 +3373,36 @@ STRIPES_FORCEINLINE Mask<T> equal(Vec<T> a, Vec<T> b) {
 }
 } // namespace detail
 
-#        define STRIPES_X86_ICMP(T)                                                                                                        \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_eq(Vec<T> a, Vec<T> b) {                                                                       \
-                return detail::equal(a, b);                                                                                                \
-            }                                                                                                                              \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_ne(Vec<T> a, Vec<T> b) {                                                                       \
-                return !detail::equal(a, b);                                                                                               \
-            }                                                                                                                              \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_lt(Vec<T> a, Vec<T> b) {                                                                       \
-                return detail::ordered_gt(b, a);                                                                                           \
-            }                                                                                                                              \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_le(Vec<T> a, Vec<T> b) {                                                                       \
-                return !detail::ordered_gt(a, b);                                                                                          \
-            }                                                                                                                              \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_gt(Vec<T> a, Vec<T> b) {                                                                       \
-                return detail::ordered_gt(a, b);                                                                                           \
-            }                                                                                                                              \
-            template <>                                                                                                                    \
-            STRIPES_FORCEINLINE Mask<T> cmp_ge(Vec<T> a, Vec<T> b) {                                                                       \
-                return !detail::ordered_gt(b, a);                                                                                          \
-            }
+#    define STRIPES_X86_ICMP(T)                                                                                                            \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_eq(Vec<T> a, Vec<T> b) {                                                                           \
+            return detail::equal(a, b);                                                                                                    \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_ne(Vec<T> a, Vec<T> b) {                                                                           \
+            return !detail::equal(a, b);                                                                                                   \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_lt(Vec<T> a, Vec<T> b) {                                                                           \
+            return detail::ordered_gt(b, a);                                                                                               \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_le(Vec<T> a, Vec<T> b) {                                                                           \
+            return !detail::ordered_gt(a, b);                                                                                              \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_gt(Vec<T> a, Vec<T> b) {                                                                           \
+            return detail::ordered_gt(a, b);                                                                                               \
+        }                                                                                                                                  \
+        template <>                                                                                                                        \
+        STRIPES_FORCEINLINE Mask<T> cmp_ge(Vec<T> a, Vec<T> b) {                                                                           \
+            return !detail::ordered_gt(b, a);                                                                                              \
+        }
 STRIPES_X86_ICMP(int32_t)
 STRIPES_X86_ICMP(uint32_t)
 STRIPES_X86_ICMP(int64_t)
 STRIPES_X86_ICMP(uint64_t)
-#        undef STRIPES_X86_ICMP
-#    endif
+#    undef STRIPES_X86_ICMP
 
 // ---- select ----
 #    if defined(__AVX__)
@@ -3964,7 +4062,8 @@ template <>
 STRIPES_FORCEINLINE void storeu(uint8_t *p, Vec<uint8_t> v) {
     _mm512_storeu_si512(reinterpret_cast<__m512i *>(p), v.reg);
 }
-#elif defined(__AVX2__)
+#elif defined(__AVX__)
+// VMOVDQU and the VPINSRB/VPSHUFB sequence behind _mm256_set1_epi8 are AVX, so this needs no AVX2.
 template <>
 STRIPES_FORCEINLINE Vec<int8_t> broadcast(int8_t v) {
     return _mm256_set1_epi8(v);
@@ -3989,10 +4088,6 @@ template <>
 STRIPES_FORCEINLINE void storeu(uint8_t *p, Vec<uint8_t> v) {
     _mm256_storeu_si256(reinterpret_cast<__m256i *>(p), v.reg);
 }
-#elif defined(__AVX__)
-// AVX without AVX2 has no 256-bit integer instructions, and the integer Vecs
-// are __m256i here, so no SSE2 form fits them: these operations are left
-// undefined for that tier, and a call is a link error.
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 template <>
 STRIPES_FORCEINLINE Vec<int8_t> broadcast(int8_t v) {
