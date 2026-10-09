@@ -1,0 +1,33 @@
+name: Install Intel oneAPI C++ compiler
+description: Install icpx from Intel's apt repository, after checking that its signing key is in the downloaded key file, and put it on PATH.
+inputs:
+  version:
+    description: The oneAPI compiler release, year.minor.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ONEAPI_VERSION: ${{ inputs.version }}
+        # The key that signs the repository's InRelease (expires 2027-08-21). The file Intel serves
+        # holds its older keys as well, so this checks the signing key is among them.
+        ONEAPI_KEY_FINGERPRINT: E9BF0AFC46D6E8B7DA5882F1BAC6F0C353D04109
+      run: |
+        curl -fsSL --retry 3 -o "$RUNNER_TEMP/oneapi.pub" \
+          https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+        gpg --show-keys --with-colons "$RUNNER_TEMP/oneapi.pub" | grep -q "^fpr:::::::::$ONEAPI_KEY_FINGERPRINT:" ||
+          { echo "::error::Intel's key file does not hold $ONEAPI_KEY_FINGERPRINT"; exit 1; }
+        sudo gpg --dearmor -o /usr/share/keyrings/oneapi.gpg "$RUNNER_TEMP/oneapi.pub"
+        echo "deb [signed-by=/usr/share/keyrings/oneapi.gpg] https://apt.repos.intel.com/oneapi all main" |
+          sudo tee /etc/apt/sources.list.d/oneapi.list
+        sudo apt-get update
+        sudo apt-get install -y "intel-oneapi-compiler-dpcpp-cpp-$ONEAPI_VERSION"
+        # vars.sh is written for interactive shells and reads unset variables.
+        set +u
+        # shellcheck disable=SC1090
+        source "/opt/intel/oneapi/compiler/$ONEAPI_VERSION/env/vars.sh"
+        dirname "$(command -v icpx)" >> "$GITHUB_PATH"
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+        echo "LIBRARY_PATH=$LIBRARY_PATH" >> "$GITHUB_ENV"
+        icpx --version

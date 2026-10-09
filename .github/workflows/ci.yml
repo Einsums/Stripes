@@ -235,6 +235,29 @@ jobs:
             exit 1
           fi
 
+  # Intel's LLVM-based compiler, icpx, on every rung the runner's CPU has. The tests build with
+  # -fp-model=precise on their own (CMakeLists.txt), since icpx's default reassociates.
+  intel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # One cache per job and matrix entry: compiling is most of every job's time.
+      - uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: ${{ github.job }}-${{ strategy.job-index }}
+          max-size: 500M
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: ./.github/actions/install-oneapi
+        with:
+          version: "2026.1"
+      - name: Configure
+        run: >
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=icpx
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build -j4
+
   sanitizers:
     runs-on: ubuntu-24.04
     steps:
