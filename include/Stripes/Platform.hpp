@@ -44,7 +44,7 @@
 // not even under /arch:AVX2 or /arch:AVX512, although both of those enable
 // FMA3 code generation and its intrinsics, so key MSVC off __AVX2__ (which
 // /arch:AVX512 also defines).
-#if defined(__FMA__) || (defined(_MSC_VER) && !defined(__clang__) && defined(__AVX2__))
+#if defined(__FMA__) || defined(__FMA4__) || (defined(_MSC_VER) && !defined(__clang__) && defined(__AVX2__))
 #    define STRIPES_HAVE_FMA 1
 #endif
 

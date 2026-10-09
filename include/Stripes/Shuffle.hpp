@@ -92,35 +92,97 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
 // 4 elements of column (k, k+4, k+8, k+12) from a group of 4 consecutive rows.
 // Phases 3+4 reassemble these lane fragments into complete 16-element columns.
 STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
-    // Phase 1+2: Process 4 groups of 4 rows each.
-    // After this, rows[g*4+k] holds column-group k from row-group g.
-    for (int g = 0; g < 4; g++) {
-        auto *r  = &rows[g * 4]; // NOLINT
-        auto  t0 = _mm512_unpacklo_ps(r[0], r[1]);
-        auto  t1 = _mm512_unpackhi_ps(r[0], r[1]);
-        auto  t2 = _mm512_unpacklo_ps(r[2], r[3]);
-        auto  t3 = _mm512_unpackhi_ps(r[2], r[3]);
-        r[0]     = _mm512_shuffle_ps(t0, t2, 0x44);
-        r[1]     = _mm512_shuffle_ps(t0, t2, 0xee);
-        r[2]     = _mm512_shuffle_ps(t1, t3, 0x44);
-        r[3]     = _mm512_shuffle_ps(t1, t3, 0xee);
-    }
+    // Solve the 2x2 diagonal blocks.
+    // unpack doesn't work like it does for doubles.
+    // Set up for the 2x2 solve.
+    __m512 const row0_iter1  = _mm512_unpacklo_ps(rows[0], rows[1]);
+    __m512 const row1_iter1  = _mm512_unpackhi_ps(rows[0], rows[1]);
+    __m512 const row2_iter1  = _mm512_unpacklo_ps(rows[2], rows[3]);
+    __m512 const row3_iter1  = _mm512_unpackhi_ps(rows[2], rows[3]);
+    __m512 const row4_iter1  = _mm512_unpacklo_ps(rows[4], rows[5]);
+    __m512 const row5_iter1  = _mm512_unpackhi_ps(rows[4], rows[5]);
+    __m512 const row6_iter1  = _mm512_unpacklo_ps(rows[6], rows[7]);
+    __m512 const row7_iter1  = _mm512_unpackhi_ps(rows[6], rows[7]);
+    __m512 const row8_iter1  = _mm512_unpacklo_ps(rows[8], rows[9]);
+    __m512 const row9_iter1  = _mm512_unpackhi_ps(rows[8], rows[9]);
+    __m512 const row10_iter1 = _mm512_unpacklo_ps(rows[10], rows[11]);
+    __m512 const row11_iter1 = _mm512_unpackhi_ps(rows[10], rows[11]);
+    __m512 const row12_iter1 = _mm512_unpacklo_ps(rows[12], rows[13]);
+    __m512 const row13_iter1 = _mm512_unpackhi_ps(rows[12], rows[13]);
+    __m512 const row14_iter1 = _mm512_unpacklo_ps(rows[14], rows[15]);
+    __m512 const row15_iter1 = _mm512_unpackhi_ps(rows[14], rows[15]);
 
-    // Phase 3+4: For each column-group k (0..3), combine the 4 row-groups
-    // into 4 complete output columns (k, k+4, k+8, k+12).
-    for (int k = 0; k < 4; k++) {
-        // Phase 3: merge row-groups A(0-3)+B(4-7) and C(8-11)+D(12-15)
-        auto uAB_lo = _mm512_shuffle_f32x4(rows[k], rows[4 + k], 0x88);
-        auto uAB_hi = _mm512_shuffle_f32x4(rows[k], rows[4 + k], 0xdd);
-        auto uCD_lo = _mm512_shuffle_f32x4(rows[8 + k], rows[12 + k], 0x88);
-        auto uCD_hi = _mm512_shuffle_f32x4(rows[8 + k], rows[12 + k], 0xdd);
+    // Actually solve the 2x2 blocks.
+    __m512 const row0_iter2  = _mm512_shuffle_ps(row0_iter1, row1_iter1, 0x44);
+    __m512 const row1_iter2  = _mm512_shuffle_ps(row0_iter1, row1_iter1, 0xee);
+    __m512 const row2_iter2  = _mm512_shuffle_ps(row2_iter1, row3_iter1, 0x44);
+    __m512 const row3_iter2  = _mm512_shuffle_ps(row2_iter1, row3_iter1, 0xee);
+    __m512 const row4_iter2  = _mm512_shuffle_ps(row4_iter1, row5_iter1, 0x44);
+    __m512 const row5_iter2  = _mm512_shuffle_ps(row4_iter1, row5_iter1, 0xee);
+    __m512 const row6_iter2  = _mm512_shuffle_ps(row6_iter1, row7_iter1, 0x44);
+    __m512 const row7_iter2  = _mm512_shuffle_ps(row6_iter1, row7_iter1, 0xee);
+    __m512 const row8_iter2  = _mm512_shuffle_ps(row8_iter1, row9_iter1, 0x44);
+    __m512 const row9_iter2  = _mm512_shuffle_ps(row8_iter1, row9_iter1, 0xee);
+    __m512 const row10_iter2 = _mm512_shuffle_ps(row10_iter1, row11_iter1, 0x44);
+    __m512 const row11_iter2 = _mm512_shuffle_ps(row10_iter1, row11_iter1, 0xee);
+    __m512 const row12_iter2 = _mm512_shuffle_ps(row12_iter1, row13_iter1, 0x44);
+    __m512 const row13_iter2 = _mm512_shuffle_ps(row12_iter1, row13_iter1, 0xee);
+    __m512 const row14_iter2 = _mm512_shuffle_ps(row14_iter1, row15_iter1, 0x44);
+    __m512 const row15_iter2 = _mm512_shuffle_ps(row14_iter1, row15_iter1, 0xee);
 
-        // Phase 4: merge AB+CD into complete columns
-        rows[k]      = _mm512_shuffle_f32x4(uAB_lo, uCD_lo, 0x88); // column k
-        rows[k + 4]  = _mm512_shuffle_f32x4(uAB_hi, uCD_hi, 0x88); // column k+4
-        rows[k + 8]  = _mm512_shuffle_f32x4(uAB_lo, uCD_lo, 0xdd); // column k+8
-        rows[k + 12] = _mm512_shuffle_f32x4(uAB_hi, uCD_hi, 0xdd); // column k+12
-    }
+    // Solve the 4x4 diagonal blocks.
+    __m512 const row0_iter3  = _mm512_shuffle_ps(row0_iter2, row2_iter2, 0x44);
+    __m512 const row1_iter3  = _mm512_shuffle_ps(row1_iter2, row3_iter2, 0x44);
+    __m512 const row2_iter3  = _mm512_shuffle_ps(row0_iter2, row2_iter2, 0xee);
+    __m512 const row3_iter3  = _mm512_shuffle_ps(row1_iter2, row3_iter2, 0xee);
+    __m512 const row4_iter3  = _mm512_shuffle_ps(row4_iter2, row6_iter2, 0x44);
+    __m512 const row5_iter3  = _mm512_shuffle_ps(row5_iter2, row7_iter2, 0x44);
+    __m512 const row6_iter3  = _mm512_shuffle_ps(row4_iter2, row6_iter2, 0xee);
+    __m512 const row7_iter3  = _mm512_shuffle_ps(row5_iter2, row7_iter2, 0xee);
+    __m512 const row8_iter3  = _mm512_shuffle_ps(row8_iter2, row10_iter2, 0x44);
+    __m512 const row9_iter3  = _mm512_shuffle_ps(row9_iter2, row11_iter2, 0x44);
+    __m512 const row10_iter3 = _mm512_shuffle_ps(row8_iter2, row10_iter2, 0xee);
+    __m512 const row11_iter3 = _mm512_shuffle_ps(row9_iter2, row11_iter2, 0xee);
+    __m512 const row12_iter3 = _mm512_shuffle_ps(row12_iter2, row14_iter2, 0x44);
+    __m512 const row13_iter3 = _mm512_shuffle_ps(row13_iter2, row15_iter2, 0x44);
+    __m512 const row14_iter3 = _mm512_shuffle_ps(row12_iter2, row14_iter2, 0xee);
+    __m512 const row15_iter3 = _mm512_shuffle_ps(row13_iter2, row15_iter2, 0xee);
+
+    // Solve the 8x8 diagonal blocks.
+    __m512 const row0_iter4  = _mm512_shuffle_f32x4(row0_iter3, row4_iter3, 0x88);
+    __m512 const row1_iter4  = _mm512_shuffle_f32x4(row1_iter3, row5_iter3, 0x88);
+    __m512 const row2_iter4  = _mm512_shuffle_f32x4(row2_iter3, row6_iter3, 0x88);
+    __m512 const row3_iter4  = _mm512_shuffle_f32x4(row3_iter3, row7_iter3, 0x88);
+    __m512 const row4_iter4  = _mm512_shuffle_f32x4(row0_iter3, row4_iter3, 0xdd);
+    __m512 const row5_iter4  = _mm512_shuffle_f32x4(row1_iter3, row5_iter3, 0xdd);
+    __m512 const row6_iter4  = _mm512_shuffle_f32x4(row2_iter3, row6_iter3, 0xdd);
+    __m512 const row7_iter4  = _mm512_shuffle_f32x4(row3_iter3, row7_iter3, 0xdd);
+    __m512 const row8_iter4  = _mm512_shuffle_f32x4(row8_iter3, row12_iter3, 0x88);
+    __m512 const row9_iter4  = _mm512_shuffle_f32x4(row9_iter3, row13_iter3, 0x88);
+    __m512 const row10_iter4 = _mm512_shuffle_f32x4(row10_iter3, row14_iter3, 0x88);
+    __m512 const row11_iter4 = _mm512_shuffle_f32x4(row11_iter3, row15_iter3, 0x88);
+    __m512 const row12_iter4 = _mm512_shuffle_f32x4(row8_iter3, row12_iter3, 0xdd);
+    __m512 const row13_iter4 = _mm512_shuffle_f32x4(row9_iter3, row13_iter3, 0xdd);
+    __m512 const row14_iter4 = _mm512_shuffle_f32x4(row10_iter3, row14_iter3, 0xdd);
+    __m512 const row15_iter4 = _mm512_shuffle_f32x4(row11_iter3, row15_iter3, 0xdd);
+
+    // Solve the rest.
+    rows[0]  = _mm512_shuffle_f32x4(row0_iter4, row8_iter4, 0x88);
+    rows[1]  = _mm512_shuffle_f32x4(row1_iter4, row9_iter4, 0x88);
+    rows[2]  = _mm512_shuffle_f32x4(row2_iter4, row10_iter4, 0x88);
+    rows[3]  = _mm512_shuffle_f32x4(row3_iter4, row11_iter4, 0x88);
+    rows[4]  = _mm512_shuffle_f32x4(row4_iter4, row12_iter4, 0x88);
+    rows[5]  = _mm512_shuffle_f32x4(row5_iter4, row13_iter4, 0x88);
+    rows[6]  = _mm512_shuffle_f32x4(row6_iter4, row14_iter4, 0x88);
+    rows[7]  = _mm512_shuffle_f32x4(row7_iter4, row15_iter4, 0x88);
+    rows[8]  = _mm512_shuffle_f32x4(row0_iter4, row8_iter4, 0xdd);
+    rows[9]  = _mm512_shuffle_f32x4(row1_iter4, row9_iter4, 0xdd);
+    rows[10] = _mm512_shuffle_f32x4(row2_iter4, row10_iter4, 0xdd);
+    rows[11] = _mm512_shuffle_f32x4(row3_iter4, row11_iter4, 0xdd);
+    rows[12] = _mm512_shuffle_f32x4(row4_iter4, row12_iter4, 0xdd);
+    rows[13] = _mm512_shuffle_f32x4(row5_iter4, row13_iter4, 0xdd);
+    rows[14] = _mm512_shuffle_f32x4(row6_iter4, row14_iter4, 0xdd);
+    rows[15] = _mm512_shuffle_f32x4(row7_iter4, row15_iter4, 0xdd);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,37 +192,47 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 
 // 4×4 double transpose (AVX)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
-    auto t0 = _mm256_shuffle_pd(rows[0], rows[1], 0x0); // a0 b0 a2 b2
-    auto t1 = _mm256_shuffle_pd(rows[0], rows[1], 0xf); // a1 b1 a3 b3
-    auto t2 = _mm256_shuffle_pd(rows[2], rows[3], 0x0); // c0 d0 c2 d2
-    auto t3 = _mm256_shuffle_pd(rows[2], rows[3], 0xf); // c1 d1 c3 d3
-    rows[0] = _mm256_permute2f128_pd(t0, t2, 0x20);
-    rows[1] = _mm256_permute2f128_pd(t1, t3, 0x20);
-    rows[2] = _mm256_permute2f128_pd(t0, t2, 0x31);
-    rows[3] = _mm256_permute2f128_pd(t1, t3, 0x31);
+    auto const t0 = _mm256_unpacklo_pd(rows[0], rows[1]); // a0 b0 a2 b2
+    auto const t1 = _mm256_unpackhi_pd(rows[0], rows[1]); // a1 b1 a3 b3
+    auto const t2 = _mm256_unpacklo_pd(rows[2], rows[3]); // c0 d0 c2 d2
+    auto const t3 = _mm256_unpackhi_pd(rows[2], rows[3]); // c1 d1 c3 d3
+    rows[0]       = _mm256_permute2f128_pd(t0, t2, 0x20);
+    rows[1]       = _mm256_permute2f128_pd(t1, t3, 0x20);
+    rows[2]       = _mm256_permute2f128_pd(t0, t2, 0x31);
+    rows[3]       = _mm256_permute2f128_pd(t1, t3, 0x31);
 }
 
 // 8×8 float transpose (AVX)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
     // Phase 1: interleave pairs
-    auto t0 = _mm256_unpacklo_ps(rows[0], rows[1]);
-    auto t1 = _mm256_unpackhi_ps(rows[0], rows[1]);
-    auto t2 = _mm256_unpacklo_ps(rows[2], rows[3]);
-    auto t3 = _mm256_unpackhi_ps(rows[2], rows[3]);
-    auto t4 = _mm256_unpacklo_ps(rows[4], rows[5]);
-    auto t5 = _mm256_unpackhi_ps(rows[4], rows[5]);
-    auto t6 = _mm256_unpacklo_ps(rows[6], rows[7]);
-    auto t7 = _mm256_unpackhi_ps(rows[6], rows[7]);
+    auto const t0 = _mm256_unpacklo_ps(rows[0], rows[1]);
+    auto const t1 = _mm256_unpackhi_ps(rows[0], rows[1]);
+    auto const t2 = _mm256_unpacklo_ps(rows[2], rows[3]);
+    auto const t3 = _mm256_unpackhi_ps(rows[2], rows[3]);
+    auto const t4 = _mm256_unpacklo_ps(rows[4], rows[5]);
+    auto const t5 = _mm256_unpackhi_ps(rows[4], rows[5]);
+    auto const t6 = _mm256_unpacklo_ps(rows[6], rows[7]);
+    auto const t7 = _mm256_unpackhi_ps(rows[6], rows[7]);
+
+    // This is needed due to the odd interleaving properties of _mm256_unpacklo_ps.
+    __m256 const row0_iter2 = _mm256_shuffle_ps(t0, t1, 0x44);
+    __m256 const row1_iter2 = _mm256_shuffle_ps(t0, t1, 0xee);
+    __m256 const row2_iter2 = _mm256_shuffle_ps(t2, t3, 0x44);
+    __m256 const row3_iter2 = _mm256_shuffle_ps(t2, t3, 0xee);
+    __m256 const row4_iter2 = _mm256_shuffle_ps(t4, t5, 0x44);
+    __m256 const row5_iter2 = _mm256_shuffle_ps(t4, t5, 0xee);
+    __m256 const row6_iter2 = _mm256_shuffle_ps(t6, t7, 0x44);
+    __m256 const row7_iter2 = _mm256_shuffle_ps(t6, t7, 0xee);
 
     // Phase 2: 2×2 block shuffle
-    auto s0 = _mm256_shuffle_ps(t0, t2, 0x44);
-    auto s1 = _mm256_shuffle_ps(t0, t2, 0xee);
-    auto s2 = _mm256_shuffle_ps(t1, t3, 0x44);
-    auto s3 = _mm256_shuffle_ps(t1, t3, 0xee);
-    auto s4 = _mm256_shuffle_ps(t4, t6, 0x44);
-    auto s5 = _mm256_shuffle_ps(t4, t6, 0xee);
-    auto s6 = _mm256_shuffle_ps(t5, t7, 0x44);
-    auto s7 = _mm256_shuffle_ps(t5, t7, 0xee);
+    auto const s0 = _mm256_shuffle_ps(row0_iter2, row2_iter2, 0x44);
+    auto const s1 = _mm256_shuffle_ps(row1_iter2, row3_iter2, 0x44);
+    auto const s2 = _mm256_shuffle_ps(row0_iter2, row2_iter2, 0xee);
+    auto const s3 = _mm256_shuffle_ps(row1_iter2, row3_iter2, 0xee);
+    auto const s4 = _mm256_shuffle_ps(row4_iter2, row6_iter2, 0x44);
+    auto const s5 = _mm256_shuffle_ps(row5_iter2, row7_iter2, 0x44);
+    auto const s6 = _mm256_shuffle_ps(row4_iter2, row6_iter2, 0xee);
+    auto const s7 = _mm256_shuffle_ps(row5_iter2, row7_iter2, 0xee);
 
     // Phase 3: cross-lane permute
     rows[0] = _mm256_permute2f128_ps(s0, s4, 0x20);
@@ -180,22 +252,15 @@ STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
 
 // 2×2 double transpose (SSE2)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<double> *rows) {
-    auto lo = _mm_unpacklo_pd(rows[0], rows[1]);
-    auto hi = _mm_unpackhi_pd(rows[0], rows[1]);
-    rows[0] = lo;
-    rows[1] = hi;
+    auto const lo = _mm_unpacklo_pd(rows[0], rows[1]);
+    auto const hi = _mm_unpackhi_pd(rows[0], rows[1]);
+    rows[0]       = lo;
+    rows[1]       = hi;
 }
 
-// 4×4 float transpose (SSE2)
+// 4×4 float transpose (SSE)
 STRIPES_FORCEINLINE void transpose_inplace(Vec<float> *rows) {
-    auto t0 = _mm_unpacklo_ps(rows[0], rows[1]); // a0 b0 a1 b1
-    auto t1 = _mm_unpackhi_ps(rows[0], rows[1]); // a2 b2 a3 b3
-    auto t2 = _mm_unpacklo_ps(rows[2], rows[3]); // c0 d0 c1 d1
-    auto t3 = _mm_unpackhi_ps(rows[2], rows[3]); // c2 d2 c3 d3
-    rows[0] = _mm_movelh_ps(t0, t2);             // a0 b0 c0 d0
-    rows[1] = _mm_movehl_ps(t2, t0);             // a1 b1 c1 d1
-    rows[2] = _mm_movelh_ps(t1, t3);             // a2 b2 c2 d2
-    rows[3] = _mm_movehl_ps(t3, t1);             // a3 b3 c3 d3
+    _MM_TRANSPOSE4_PS(rows[0], rows[1], rows[2], rows[3]);
 }
 
 // ---------------------------------------------------------------------------
