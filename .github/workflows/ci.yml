@@ -235,8 +235,9 @@ jobs:
             exit 1
           fi
 
-  # Intel's LLVM-based compiler, icpx, on every rung the runner's CPU has. The tests build with
-  # -fp-model=precise on their own (CMakeLists.txt), since icpx's default reassociates.
+  # Intel's LLVM-based compiler, icpx, on every rung, run on SDE emulating Sapphire Rapids since the
+  # runners do not all have AVX-512. The tests build with -fp-model=precise on their own
+  # (CMakeLists.txt), since icpx's default reassociates and flushes subnormals to zero.
   intel:
     runs-on: ubuntu-24.04
     steps:
@@ -250,13 +251,21 @@ jobs:
       - uses: ./.github/actions/install-oneapi
         with:
           version: "2026.1"
+      - uses: ./.github/actions/install-sde
       - name: Configure
         run: >
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=icpx
       - name: Build
         run: cmake --build build
-      - name: Test
-        run: ctest --test-dir build -j4
+      - name: Test under SDE
+        run: |
+          set -o pipefail
+          "$SDE64" -spr -- ctest --test-dir build -j4 --timeout 3600 | tee sde-ctest.log
+          # A Skipped test here means a guard did not see the emulated CPU.
+          if grep -q "did not run" sde-ctest.log; then
+            echo "::error::tests were skipped under SDE"
+            exit 1
+          fi
 
   sanitizers:
     runs-on: ubuntu-24.04

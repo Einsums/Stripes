@@ -343,8 +343,16 @@ subnormal results included:
 
 Each returns the exact result at its special values (``exp(0) = 1``,
 ``erf(-0) = -0``, ``erfc(-inf) = 2``, ``rsqrt(-0) = -inf``, and so on) and
-passes NaN through. Under ``using namespace stripes``, an unqualified ``exp(2.0)``
-still calls the C library; call ``simd::exp`` for these algorithms on scalars.
+passes NaN through. Under ``using namespace stripes``, an unqualified
+``exp(2.0)`` still calls the C library; call ``simd::exp`` for these algorithms
+on scalars.
+
+The subnormal results above need the processor's default floating-point mode.
+Intel's ``icx`` and ``icpx`` at their default ``-fp-model=fast`` compile into
+``main()`` a switch of the whole process to flush-to-zero and
+denormals-are-zero, so every subnormal result and input becomes zero, in these
+functions and everywhere else; build the file holding ``main()`` with
+``-fp-model=precise``.
 
 GPU Kernels
 ===========
