@@ -158,6 +158,20 @@ if(STRIPES_WITH_TESTS
 )
   enable_testing()
 endif()
+# Intel's icx/icpx default to -fp-model=fast, which reassociates floating-point arithmetic, a mode the
+# library does not support (the SSE2 rounding emulation relies on an add and subtract staying
+# apart), and compile into main() a switch of the whole process to flush-to-zero and
+# denormals-are-zero. Stripes' own tests, benchmarks and examples are built precise, so they check
+# the library under the semantics it promises; that includes a fetched Catch2, whose
+# Catch2WithMain supplies the tests' main(). Directory options reach only Stripes' own
+# directories, never a project that uses Stripes.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  if(CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fp:precise>)
+  else()
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fp-model=precise>)
+  endif()
+endif()
 if(STRIPES_WITH_TESTS OR STRIPES_WITH_BENCHMARKS)
   find_package(Catch2 3 QUIET)
   if(NOT Catch2_FOUND)
@@ -174,18 +188,6 @@ if(STRIPES_WITH_TESTS OR STRIPES_WITH_BENCHMARKS)
       GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(Catch2)
-  endif()
-endif()
-# Intel's icx/icpx default to -fp-model=fast, which reassociates floating-point arithmetic, a mode the
-# library does not support (the SSE2 rounding emulation relies on an add and subtract staying
-# apart). Stripes' own tests, benchmarks and examples are built precise, so they check the library
-# under the semantics it promises. Set here, after Catch2, it reaches only the directories below and
-# never a project that uses Stripes.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
-  if(CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fp:precise>)
-  else()
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fp-model=precise>)
   endif()
 endif()
 if(STRIPES_WITH_TESTS)
